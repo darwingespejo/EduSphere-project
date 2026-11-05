@@ -42,7 +42,7 @@ export default function ModuleQuizActivity({
   onAttemptSaved,
 }: {
   quiz: Quiz;
-  onAttemptSaved: () => void;
+  onAttemptSaved?: () => void;
 }) {
   const [answers, setAnswers] = useState<Record<string, string | number>>({});
   const [result, setResult] = useState<QuizResult | null>(null);
@@ -67,7 +67,7 @@ export default function ModuleQuizActivity({
     }
     setResult(response.data);
     toast.ok(response.message);
-    onAttemptSaved();
+    onAttemptSaved?.();
   };
 
   return (

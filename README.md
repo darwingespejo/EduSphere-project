@@ -86,11 +86,11 @@ Password for all: `password123`. Public credential demo: `/verify/EDU-7Q4M-92XT`
 | `RESEND_API_KEY`, `MAIL_FROM` | Transactional email through Resend; `MAIL_FROM` must use a verified sender domain |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | SMTP fallback when Resend is not configured |
 | `CURL_CA_BUNDLE` | Optional trusted CA bundle for PHP cURL HTTPS requests |
-| `GEMINI_API_KEY` | Optional server-side Gemini key for study guidance on the learning-path page |
+| `GEMINI_API_KEY` | Optional server-side Gemini key for the learning-path study assistant |
 | `GEMINI_MODEL` | Optional Gemini model (default `gemini-3.6-flash`) |
 | `JUDGE0_URL`, `JUDGE0_API_KEY` | Remote code execution instead of the local sandbox |
 
-The learning-path page offers opt-in Gemini study guidance. Add `GEMINI_API_KEY` to `backend/.env` and restart the PHP API to enable it. The API key remains on the backend; when a student asks for guidance, the course title, path rationale, progress count, and up to 12 upcoming lesson titles/statuses are sent to Gemini. Account details are not sent. Without a key, the existing learning-path features continue to work and the guidance action reports that Gemini is not configured.
+The learning-path page offers a Gemini chat assistant only to accounts with an active Pro or Team subscription. This is checked by the PHP API against the verified subscription record, including its expiry, as well as by the UI. Add `GEMINI_API_KEY` to `backend/.env` and restart the PHP API to enable Gemini. The API key remains on the backend. A chat request includes the course title, path progress, up to 8 upcoming lesson contents, up to 20 database quiz questions/options, and a short recent chat history; it excludes account details and quiz answer keys. Gemini is instructed not to invent quiz questions or course facts.
 
 ### Google sign-in setup
 

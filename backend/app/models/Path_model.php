@@ -37,6 +37,60 @@ class Path_model extends Model
         )->fetchAll(PDO::FETCH_ASSOC);
     }
 
+    public function questionsForPath($pathId): array
+    {
+        $questions = $this->db->raw(
+            'SELECT m.title module_title, q.title quiz_title, qq.id question_id, qq.type, qq.prompt, qq.options
+             FROM module_quizzes q
+             JOIN modules m ON m.id = q.module_id
+             JOIN module_quiz_questions qq ON qq.quiz_id = q.id
+             WHERE EXISTS (
+               SELECT 1 FROM learning_path_items pi
+               JOIN lessons l ON l.id = pi.lesson_id
+               WHERE pi.path_id = ? AND pi.status != \'done\' AND l.module_id = m.id
+             )
+             ORDER BY (
+               SELECT MIN(pi.position) FROM learning_path_items pi
+               JOIN lessons l ON l.id = pi.lesson_id
+               WHERE pi.path_id = ? AND pi.status != \'done\' AND l.module_id = m.id
+             ), q.created_at, qq.position
+             LIMIT 20',
+            [$pathId, $pathId]
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($questions as &$question) {
+            $question['options'] = $question['options'] === null
+                ? []
+                : json_decode($question['options'], true, 512, JSON_THROW_ON_ERROR);
+        }
+        unset($question);
+
+        return $questions;
+    }
+
+    public function assistantLessonsForPath($pathId): array
+    {
+        $lessons = $this->db->raw(
+            "SELECT l.title, m.title module_title, l.content
+             FROM learning_path_items pi
+             JOIN lessons l ON l.id = pi.lesson_id
+             JOIN modules m ON m.id = l.module_id
+             WHERE pi.path_id = ? AND pi.status != 'done'
+             ORDER BY pi.position LIMIT 8",
+            [$pathId]
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($lessons as &$lesson) {
+            $lesson['title'] = mb_substr((string)$lesson['title'], 0, 160);
+            $lesson['module'] = mb_substr((string)$lesson['module_title'], 0, 160);
+            $lesson['content'] = mb_substr((string)$lesson['content'], 0, 2500);
+            unset($lesson['module_title']);
+        }
+        unset($lesson);
+
+        return $lessons;
+    }
+
     public function itemById($itemId)
     {
         return $this->db->table('learning_path_items')->where('id', $itemId)->limit(1)->get();

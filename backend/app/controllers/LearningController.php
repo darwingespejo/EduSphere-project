@@ -9,6 +9,7 @@ class LearningController extends MY_Controller
     private $auth;
     private $gamify;
     private $paths;
+    private $meta;
 
     public function __construct()
     {
@@ -21,6 +22,7 @@ class LearningController extends MY_Controller
         $this->assessments = $this->call->model('Assessment_model');
         $this->paths_model = $this->call->model('Path_model');
         $this->auth = $this->call->model('Auth_model');
+        $this->meta = $this->call->model('Meta_model');
         $this->paths = $this->call->library('PathEngine', [
             $this->paths_model,
             $this->content,
@@ -157,13 +159,55 @@ class LearningController extends MY_Controller
     public function path_coach()
     {
         $user = require_role($this->users, ['student']);
+        if (!$this->meta->hasActiveAssistantSubscription($user['id'])) {
+            fail_api('Gemini study assistant is available only with an active Pro or Team subscription.', 403);
+        }
         $path = $this->paths_model->activeFor($user['id']);
         if (!$path) fail_api('Build a learning path before asking Gemini for guidance.', 409);
         if (!GeminiPathCoach::configured()) {
             fail_api('Gemini is not configured. Add GEMINI_API_KEY to backend/.env and restart the API.', 503);
         }
-        if (rate_limited($this->auth, "path-coach:{$user['id']}", 5, 3600)) {
-            fail_api('Gemini study guidance is limited to 5 requests per hour.', 429);
+        if (rate_limited($this->auth, "path-coach:{$user['id']}", 20, 3600)) {
+            fail_api('Gemini study assistant is limited to 20 messages per hour.', 429);
+        }
+
+        $body = json_body();
+        $message = $body['message'] ?? null;
+        if (!is_string($message)) fail_api('Message must be text.', 422);
+        $message = trim($message);
+        if ($message === '' || mb_strlen($message) > 1200) {
+            fail_api('Enter a message between 1 and 1200 characters.', 422);
+        }
+        $history = $body['history'] ?? [];
+        if (!is_array($history) || !array_is_list($history)) fail_api('Chat history must be a list of messages.', 422);
+
+        $conversation = [];
+        foreach (array_slice($history, -10) as $entry) {
+            if (!is_array($entry) || !in_array($entry['role'] ?? null, ['user', 'assistant'], true)) {
+                fail_api('Chat history contains an invalid message.', 422);
+            }
+            $text = $entry['text'] ?? null;
+            if (!is_string($text)) fail_api('Chat messages must be text.', 422);
+            $text = trim($text);
+            if ($text === '' || mb_strlen($text) > 1200) {
+                fail_api('Chat messages must be between 1 and 1200 characters.', 422);
+            }
+            $conversation[] = [
+                'role' => $entry['role'] === 'assistant' ? 'model' : 'user',
+                'text' => $text,
+            ];
+        }
+        while ($conversation && $conversation[0]['role'] === 'model') {
+            array_shift($conversation);
+        }
+        $normalizedConversation = [];
+        foreach ($conversation as $entry) {
+            $lastIndex = count($normalizedConversation) - 1;
+            if ($lastIndex >= 0 && $normalizedConversation[$lastIndex]['role'] === $entry['role']) {
+                $normalizedConversation[$lastIndex]['text'] .= "\n" . $entry['text'];
+            } else {
+                $normalizedConversation[] = $entry;
+            }
         }
 
         $items = $this->paths_model->itemsOf($path['id']);
@@ -179,17 +223,13 @@ class LearningController extends MY_Controller
                 'completed' => count($items) - count($remaining),
                 'total' => count($items),
             ],
-            'nextLessons' => array_map(static fn($item) => [
-                'title' => mb_substr((string)$item['title'], 0, 120),
-                'module' => mb_substr((string)$item['module_title'], 0, 100),
-                'status' => $item['status'],
-                'estimatedMinutes' => (int)$item['estimated_minutes'],
-            ], array_slice($remaining, 0, 12)),
+            'lessons' => $this->paths_model->assistantLessonsForPath($path['id']),
+            'databaseQuizQuestions' => $this->paths_model->questionsForPath($path['id']),
         ];
 
         respond(
-            ['advice' => GeminiPathCoach::advise($context)],
-            'Gemini study guidance is ready.'
+            ['reply' => GeminiPathCoach::chat($context, $normalizedConversation, $message)],
+            'Gemini replied.'
         );
     }
 
@@ -238,6 +278,7 @@ class LearningController extends MY_Controller
                 ];
             }, $this->paths_model->itemsOf($path['id'])),
             'course' => $this->content->courseById($path['course_id']),
+            'questions' => $this->paths_model->questionsForPath($path['id']),
         ];
     }
 }

@@ -233,6 +233,17 @@ class Meta_model extends Model
         )->fetch(PDO::FETCH_ASSOC) ?: null;
     }
 
+    public function hasActiveAssistantSubscription($userId): bool
+    {
+        return (bool)$this->db->raw(
+            "SELECT id FROM subscriptions
+             WHERE user_id = ? AND plan IN ('pro', 'team') AND status = 'active'
+               AND (expires_at IS NULL OR expires_at > NOW())
+             LIMIT 1",
+            [$userId]
+        )->fetch(PDO::FETCH_ASSOC);
+    }
+
     public function activatePaidPlan($userId, $plan, $sessionId)
     {
         $existing = $this->db->raw(

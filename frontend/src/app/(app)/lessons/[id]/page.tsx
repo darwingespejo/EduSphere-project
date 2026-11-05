@@ -6,6 +6,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, Award, CheckCheck, Clock } from "lucide-react";
 import { SphereLoader } from "@/components/Logo";
 import { BadgeModal, type EarnedBadge } from "@/components/BadgeModal";
+import ModuleQuizActivity from "@/components/ModuleQuizActivity";
 import { toast } from "@/components/Toasts";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/store";
@@ -13,6 +14,10 @@ import { useAuth } from "@/lib/store";
 type Lesson = {
   id: string; title: string; content: string; estimatedMinutes: number;
   moduleTitle: string; courseTitle: string; courseId: string; skills: string[]; completed: boolean;
+  quizzes: {
+    id: string; title: string; questionCount: number; bestScore: number | null; attempts: number;
+    questions: { id: string; type: "multiple_choice" | "identification"; prompt: string; options: string[]; points: number }[];
+  }[];
 };
 type ProgressResp = { completed: boolean; certificateCode: string | null; xp: number; level: number; badges: (EarnedBadge | null)[] };
 
@@ -117,6 +122,17 @@ export default function LessonPage() {
       <motion.article initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mt-8">
         {renderContent(lesson.content)}
       </motion.article>
+      {lesson.quizzes.length > 0 && (
+        <section className="mt-10 space-y-4">
+          <div>
+            <h2 className="display text-xl font-bold">Module questions</h2>
+            <p className="text-sm text-muted mt-1">Answer questions saved for this module. Your responses are graded and recorded.</p>
+          </div>
+          {lesson.quizzes.map((quiz) => (
+            <ModuleQuizActivity key={quiz.id} quiz={quiz} />
+          ))}
+        </section>
+      )}
       <div className="sticky bottom-5 mt-10">
         <div className="card p-4 flex items-center justify-between gap-4 shadow-2xl">
           <p className="text-sm text-muted">{lesson.completed ? "Marked complete." : "Read through, work the code sample, then mark it done."}</p>

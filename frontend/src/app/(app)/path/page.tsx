@@ -1,9 +1,8 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import Link from "@/router/link";
 import { motion } from "framer-motion";
-import { Check, Gauge, Lock, Play, RefreshCw, Sparkles } from "lucide-react";
+import { Check, Gauge, Lock, Play, RefreshCw, Send, Sparkles } from "lucide-react";
 import { useRouter } from "@/router/navigation";
 import { SphereLoader } from "@/components/Logo";
 import { Constellation, type PathNode } from "@/components/Constellation";
@@ -17,9 +16,21 @@ type PathData = {
   path: { id: string; rationale: string; velocity: string; status: string } | null;
   items: PathNode[];
   course: { title: string; level: string } | null;
+  questions?: PracticeQuestion[];
   hasPlacement?: boolean;
   badge?: EarnedBadge | null;
 };
+
+type PracticeQuestion = {
+  module_title: string;
+  quiz_title: string;
+  question_id: string;
+  type: "multiple_choice" | "identification";
+  prompt: string;
+  options: string[];
+};
+
+type ChatMessage = { role: "user" | "assistant"; text: string };
 
 function formatAdviceLine(line: string): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -73,11 +84,13 @@ function renderAdvice(text: string) {
 export default function PathPage() {
   const router = useRouter();
   const pathRes = useApi<PathData>("/api/v1/learning-path");
+  const subscriptionRes = useApi<{ assistantAvailable: boolean }>("/api/v1/payments/subscription");
   const [regenerating, setRegenerating] = useState(false);
   const [badge, setBadge] = useState<EarnedBadge[]>([]);
   const [generating, setGenerating] = useState(false);
   const [coaching, setCoaching] = useState(false);
-  const [advice, setAdvice] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
   const autoBuildStarted = useRef(false);
 
   const data = pathRes.data;
@@ -141,15 +154,27 @@ export default function PathPage() {
     else toast.err(r.message);
   };
 
-  const askGemini = async () => {
+  const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = chatDraft.trim();
+    if (!message || coaching) return;
+
+    const history = chatMessages.slice(-10);
+    setChatMessages((current) => [...current, { role: "user", text: message }]);
+    setChatDraft("");
     setCoaching(true);
-    const r = await api.post<{ advice: string }>("/api/v1/learning-path/coach");
+    const r = await api.post<{ reply: string }>("/api/v1/learning-path/coach", {
+      message,
+      history,
+    });
     setCoaching(false);
-    if (r.success) setAdvice(r.data.advice);
+    if (r.success) setChatMessages((current) => [...current, { role: "assistant", text: r.data.reply }]);
     else toast.err(r.message);
   };
 
   const progress = items.length ? Math.round((done / items.length) * 100) : 0;
+  const practiceQuestions = data.questions ?? [];
+  const assistantAvailable = subscriptionRes.data?.assistantAvailable === true;
 
   return (
     <div className="space-y-8">
@@ -158,27 +183,85 @@ export default function PathPage() {
         title={data.course ? `${data.course.title} — your orbit` : "My learning path"}
         sub={data.path.rationale}
         actions={
-          <>
-            <button className="btn btn-ghost" onClick={askGemini} disabled={coaching}>
-              <Sparkles size={15} className={coaching ? "animate-pulse" : ""} /> {coaching ? "Asking Gemini…" : "Ask Gemini"}
-            </button>
-            <button className="btn btn-ghost" onClick={regenerate} disabled={regenerating}>
-              <RefreshCw size={15} className={regenerating ? "animate-spin" : ""} /> {regenerating ? "Re-sequencing…" : "Regenerate"}
-            </button>
-          </>
+          <button className="btn btn-ghost" onClick={regenerate} disabled={regenerating}>
+            <RefreshCw size={15} className={regenerating ? "animate-spin" : ""} /> {regenerating ? "Re-sequencing…" : "Regenerate"}
+          </button>
         }
       />
 
-      {advice && (
-        <section className="card p-5 md:p-6" aria-live="polite">
-          <div className="flex items-center gap-2">
-            <Sparkles size={17} className="text-primary" />
-            <h2 className="display font-bold">Your Gemini study coach</h2>
+      <section className="card p-5 md:p-6" aria-label="Gemini study assistant">
+        <div className="flex items-center gap-2">
+          <Sparkles size={17} className="text-primary" />
+          <h2 className="display font-bold">Gemini study assistant</h2>
+        </div>
+        {subscriptionRes.error ? (
+          <div className="mt-3" role="alert">
+            <p className="text-sm text-coral">{subscriptionRes.error}</p>
+            <button type="button" className="btn btn-ghost mt-2" onClick={() => void subscriptionRes.refetch()}>Check subscription again</button>
           </div>
-          <div className="text-sm leading-relaxed text-muted mt-3 space-y-3">{renderAdvice(advice)}</div>
-          <p className="text-xs text-muted mt-4">Generated from your course, path progress, and upcoming lessons. No account details are shared.</p>
-        </section>
-      )}
+        ) : !assistantAvailable ? (
+          <div className="mt-3 rounded-xl bg-raised/60 p-4">
+            <p className="text-sm text-muted">The Gemini study assistant is available to active Pro and Team subscribers.</p>
+            <Link href="/billing" className="btn btn-primary mt-3">View plans</Link>
+          </div>
+        ) : (
+          <>
+            <p className="text-sm text-muted mt-1">Ask about your lessons, concepts, or learning path. Gemini uses your course content and does not create quiz questions.</p>
+            <div className="mt-4 max-h-[420px] min-h-24 overflow-y-auto space-y-3" aria-live="polite">
+              {chatMessages.length === 0 && (
+                <div className="rounded-xl bg-raised/60 p-4 text-sm text-muted">
+                  Hi! I can help explain lessons and guide you through your path. What would you like to learn about?
+                </div>
+              )}
+              {chatMessages.map((message, index) => (
+                <div key={`${index}-${message.role}`} className={`rounded-xl p-4 text-sm ${
+                  message.role === "user" ? "ml-8 bg-primary/10 text-text" : "mr-8 bg-raised/60 text-muted"
+                }`}>
+                  {renderAdvice(message.text)}
+                </div>
+              ))}
+              {coaching && <p className="text-sm text-muted animate-pulse">Gemini is thinking…</p>}
+            </div>
+            <form onSubmit={sendMessage} className="mt-4 flex items-end gap-2">
+              <textarea
+                className="input min-h-11 max-h-36 resize-y"
+                rows={1}
+                maxLength={1200}
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                placeholder="Ask a question about your course…"
+                aria-label="Message Gemini"
+              />
+              <button className="btn btn-primary shrink-0" type="submit" disabled={coaching || !chatDraft.trim()}>
+                <Send size={15} /> {coaching ? "Sending…" : "Send"}
+              </button>
+            </form>
+            <p className="text-xs text-muted mt-2">Up to 20 messages per hour. Don’t include personal or sensitive information.</p>
+          </>
+        )}
+      </section>
+
+      <section className="card p-5 md:p-6">
+        <h2 className="display font-bold">Practice questions from your course</h2>
+        <p className="text-xs text-muted mt-1">These questions and choices come directly from the database; Gemini does not generate them.</p>
+        {practiceQuestions.length ? (
+          <ol className="mt-4 space-y-4 list-decimal pl-5 text-sm">
+            {practiceQuestions.map((question) => (
+              <li key={question.question_id}>
+                <p className="text-text">{question.prompt}</p>
+                <p className="text-xs text-muted mt-1">{question.module_title} · {question.quiz_title}</p>
+                {question.options.length > 0 && (
+                  <ul className="mt-2 space-y-1 pl-3 text-muted">
+                    {question.options.map((option, index) => <li key={index}>{String.fromCharCode(65 + index)}. {option}</li>)}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="text-sm text-muted mt-2">There are no quiz questions in your upcoming path modules yet.</p>
+        )}
+      </section>
 
       <div className="card min-w-0 overflow-hidden p-2 md:p-6">
         <Constellation items={items} onOpen={(n) => router.push(`/lessons/${n.lessonId}?item=${n.itemId}`)} />

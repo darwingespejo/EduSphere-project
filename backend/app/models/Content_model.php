@@ -27,7 +27,7 @@ class Content_model extends Model
     {
         $row = $this->db->raw(
             'SELECT l.id, l.title, l.content, l.estimated_minutes estimatedMinutes,
-                    m.title moduleTitle, c.title courseTitle, c.id courseId,
+                    m.id moduleId, m.title moduleTitle, c.title courseTitle, c.id courseId,
                     c.instructor_id instructorId, c.published
              FROM lessons l JOIN modules m ON m.id = l.module_id JOIN courses c ON c.id = m.course_id
              WHERE l.id = ? LIMIT 1',
@@ -44,6 +44,39 @@ class Content_model extends Model
         }
         if (!$allowed) return null;
         $row['skills'] = $this->db->raw('SELECT s.name FROM lesson_skills ls JOIN skills s ON s.id = ls.skill_id WHERE ls.lesson_id = ?', [$lessonId])->fetchAll(PDO::FETCH_COLUMN);
+        $row['quizzes'] = [];
+        if ($role === 'student') {
+            $quizzes = $this->db->raw(
+                'SELECT q.id, q.title, COUNT(DISTINCT qq.id) questionCount,
+                        MAX(qa.score) bestScore, COUNT(DISTINCT qa.id) attempts
+                 FROM module_quizzes q
+                 LEFT JOIN module_quiz_questions qq ON qq.quiz_id = q.id
+                 LEFT JOIN module_quiz_attempts qa ON qa.quiz_id = q.id AND qa.user_id = ?
+                 WHERE q.module_id = ?
+                 GROUP BY q.id, q.title, q.created_at ORDER BY q.created_at',
+                [$userId, $row['moduleId']]
+            )->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($quizzes as &$quiz) {
+                $quiz['questionCount'] = (int)$quiz['questionCount'];
+                $quiz['attempts'] = (int)$quiz['attempts'];
+                $quiz['bestScore'] = $quiz['bestScore'] === null ? null : (float)$quiz['bestScore'];
+                $quiz['questions'] = $this->db->raw(
+                    'SELECT id, type, prompt, options, points
+                     FROM module_quiz_questions WHERE quiz_id = ? ORDER BY position',
+                    [$quiz['id']]
+                )->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($quiz['questions'] as &$question) {
+                    $question['options'] = $question['options'] === null
+                        ? []
+                        : json_decode($question['options'], true, 512, JSON_THROW_ON_ERROR);
+                    $question['points'] = (int)$question['points'];
+                }
+                unset($question);
+            }
+            unset($quiz);
+            $row['quizzes'] = $quizzes;
+        }
         $row['completed'] = (bool)$this->db->raw(
             "SELECT pr.id FROM progress_records pr WHERE pr.user_id = ? AND pr.lesson_id = ?
              UNION
@@ -53,6 +86,7 @@ class Content_model extends Model
             [$userId, $lessonId, $userId, $lessonId]
         )->fetch(PDO::FETCH_ASSOC);
         unset($row['instructorId'], $row['published']);
+        unset($row['moduleId']);
         return $row;
     }
 

@@ -135,7 +135,10 @@ class MetaController extends MY_Controller
     public function subscription()
     {
         $user = auth_user($this->users);
-        respond(['subscription' => $this->meta->subscriptionOf($user['id'])]);
+        respond([
+            'subscription' => $this->meta->subscriptionOf($user['id']),
+            'assistantAvailable' => $this->meta->hasActiveAssistantSubscription($user['id']),
+        ]);
     }
 
     public function verify_payment()
