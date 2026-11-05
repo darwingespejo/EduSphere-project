@@ -3,44 +3,48 @@
 /* EduSphere design tokens — "shoreline" theme: warm sand beige + deep marine blue.
    Default = light (beige). data-theme="dark" = deep ocean night. */
 :root {
-  --bg: #efe8da;          /* warm sand */
-  --surface: #faf6ee;     /* paper card */
-  --raised: #e6ddc9;      /* dune shadow card */
-  --text: #10253f;        /* deep marine ink */
-  --muted: #5d6b7e;
-  --line: rgba(16, 37, 63, 0.14);
-  --primary: #134a7c;     /* dark marine blue */
-  --primary-ink: #f4efe4;
-  --mint: #14736f;        /* sea-glass teal */
-  --amber: #b4711b;       /* sun-warmed amber */
-  --coral: #c24545;
+  --font-bricolage: "Trebuchet MS";
+  --font-instrument: "Segoe UI";
+  --font-jetbrains: "Consolas";
+  --font-fraunces: "Georgia";
+  --bg: #fbf6e9;
+  --surface: #fffdf8;
+  --raised: #f1e8d5;
+  --text: #142b39;
+  --muted: #61727b;
+  --line: rgba(20, 43, 57, 0.2);
+  --primary: #ff674f;
+  --primary-ink: #fff9ec;
+  --mint: #188c83;
+  --amber: #f2b947;
+  --coral: #ed5d4d;
   --success: #17725c;
   --warn: #a86a12;
   --error: #c24545;
-  --glow-primary: rgba(19, 74, 124, 0.16);
-  --glow-mint: rgba(20, 115, 111, 0.14);
+  --glow-primary: rgba(255, 103, 79, 0.15);
+  --glow-mint: rgba(24, 140, 131, 0.13);
   --wave-1: #1d5f99;
   --wave-2: #134a7c;
   --wave-3: #0e2f52;
 }
 
 [data-theme="dark"] {
-  --bg: #071726;          /* ocean night */
-  --surface: #0d243c;
-  --raised: #143352;
-  --text: #efe6d5;        /* sand text */
-  --muted: #95a8bc;
-  --line: rgba(239, 230, 213, 0.12);
-  --primary: #5b9bd8;
-  --primary-ink: #0a1c30;
-  --mint: #3fc4b8;
-  --amber: #e3b06c;
-  --coral: #ef7d7d;
+  --bg: #10232d;
+  --surface: #19313c;
+  --raised: #23414b;
+  --text: #fbf2dd;
+  --muted: #a5b5b7;
+  --line: rgba(251, 242, 221, 0.16);
+  --primary: #ff8065;
+  --primary-ink: #192a31;
+  --mint: #53c4b7;
+  --amber: #f2c66c;
+  --coral: #ff8065;
   --success: #41d3a2;
   --warn: #e3b06c;
   --error: #ef7d7d;
-  --glow-primary: rgba(91, 155, 216, 0.22);
-  --glow-mint: rgba(63, 196, 184, 0.16);
+  --glow-primary: rgba(255, 128, 101, 0.22);
+  --glow-mint: rgba(83, 196, 183, 0.16);
   --wave-1: #0e2c4e;
   --wave-2: #123c6b;
   --wave-3: #175089;
@@ -94,13 +98,13 @@ body {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 22px;
 }
 
 .card-raise {
   background: var(--raised);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 22px;
 }
 
 .eyebrow {
@@ -126,20 +130,20 @@ body {
   gap: 8px;
   font-weight: 600;
   font-size: 14px;
-  border-radius: 12px;
+  border-radius: 999px;
   padding: 10px 18px;
-  border: 1px solid transparent;
+  border: 1.5px solid var(--text);
   cursor: pointer;
   transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), background 0.2s, border-color 0.2s, opacity 0.2s;
   overflow: hidden;
 }
 .btn:active { transform: scale(0.97); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-primary { background: var(--primary); color: var(--primary-ink); box-shadow: 0 8px 26px -10px rgba(16, 52, 92, 0.55); }
-.btn-primary:hover { transform: translateY(-1px); }
-.btn-ghost { border-color: var(--line); color: var(--text); background: transparent; }
+.btn-primary { background: var(--primary); color: var(--primary-ink); box-shadow: 0 4px 0 var(--text); }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 0 var(--text); }
+.btn-ghost { border-color: var(--text); color: var(--text); background: var(--surface); }
 .btn-ghost:hover { border-color: var(--primary); color: var(--primary); }
-.btn-mint { background: var(--mint); color: #f2fbf8; }
+.btn-mint { background: var(--mint); color: #f2fbf8; border-color: var(--text); }
 .btn-mint:hover { transform: translateY(-1px); }
 
 .input {
@@ -223,6 +227,35 @@ body {
   background: radial-gradient(ellipse at center, rgba(11, 48, 85, 0.35), transparent 70%);
 }
 
+.planet-eye {
+  width: 15px;
+  height: 19px;
+  border-radius: 50%;
+  background: #fff7e6;
+  position: relative;
+}
+.planet-eye::after {
+  content: "";
+  position: absolute;
+  width: 7px;
+  height: 9px;
+  left: 4px;
+  top: 5px;
+  border-radius: 50%;
+  background: #142b39;
+}
+.planet-smile {
+  width: 38px;
+  height: 17px;
+  border-bottom: 4px solid #fff7e6;
+  border-radius: 0 0 50% 50%;
+}
+.planet-orbit {
+  transform: rotate(-18deg) scaleY(0.38);
+  box-shadow: 0 0 0 2px rgba(242, 185, 71, 0.16);
+  pointer-events: none;
+}
+
 /* Range slider for rubric scoring */
 input[type="range"].rubric-range {
   -webkit-appearance: none;
@@ -256,7 +289,110 @@ input[type="range"].rubric-range::-moz-range-thumb {
 
 .monaco-wrap { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
 
+.certificate-sheet {
+  position: relative;
+  padding: clamp(14px, 3vw, 30px);
+  overflow: hidden;
+  border: 1px solid rgba(20, 43, 57, 0.24);
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(24, 140, 131, 0.1), transparent 30%),
+    radial-gradient(ellipse at 92% 92%, rgba(255, 103, 79, 0.09), transparent 34%),
+    radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.88), rgba(255, 253, 248, 0.86) 72%),
+    linear-gradient(135deg, #fffdf8, #faf6eb 52%, #fffdf8);
+  box-shadow: 0 24px 70px -38px rgba(20, 43, 57, 0.42);
+}
+.certificate-sheet::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1px solid rgba(24, 140, 131, 0.34);
+  pointer-events: none;
+  z-index: 2;
+}
+.certificate-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 0;
+  width: min(54%, 390px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.42;
+  background:
+    radial-gradient(circle, rgba(255, 103, 79, 0.09) 0 5%, transparent 5.5% 29%, rgba(24, 140, 131, 0.055) 29.5% 30%, transparent 30.5% 42%, rgba(24, 140, 131, 0.05) 42.5% 43%, transparent 43.5%),
+    radial-gradient(circle, transparent 0 57%, rgba(20, 43, 57, 0.07) 57.3% 57.6%, transparent 57.9%);
+}
+.certificate-watermark::before {
+  content: "";
+  position: absolute;
+  inset: 37% 7%;
+  border: 1px solid rgba(24, 140, 131, 0.12);
+  border-radius: 50%;
+  transform: rotate(-28deg);
+}
+.certificate-watermark::after {
+  content: "";
+  position: absolute;
+  top: 20%;
+  right: 21%;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(24, 140, 131, 0.14);
+}
+.certificate-inner {
+  position: relative;
+  z-index: 1;
+  min-height: 490px;
+  padding: clamp(18px, 3vw, 34px);
+  border: 1px solid rgba(20, 43, 57, 0.1);
+  background-image: radial-gradient(rgba(20, 43, 57, 0.045) 0.55px, transparent 0.7px);
+  background-size: 13px 13px;
+}
+[data-theme="dark"] .certificate-sheet {
+  border-color: rgba(251, 242, 221, 0.32);
+  background:
+    radial-gradient(ellipse at 12% 8%, rgba(83, 196, 183, 0.11), transparent 30%),
+    radial-gradient(ellipse at 92% 92%, rgba(255, 128, 101, 0.09), transparent 34%),
+    radial-gradient(ellipse at 50% 45%, rgba(35, 65, 75, 0.98), rgba(25, 49, 60, 0.96) 72%),
+    #19313c;
+}
+[data-theme="dark"] .certificate-sheet::before { border-color: rgba(83, 196, 183, 0.4); }
+[data-theme="dark"] .certificate-inner { border-color: rgba(251, 242, 221, 0.16); }
+[data-theme="dark"] .certificate-inner { background-image: radial-gradient(rgba(251, 242, 221, 0.06) 0.55px, transparent 0.7px); }
+[data-theme="dark"] .certificate-watermark { opacity: 0.55; }
+
 :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+@page { size: landscape; margin: 0.35in; }
+@media print {
+  html, body { width: 100%; min-height: 0; background: #fff !important; }
+  body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  body * { visibility: hidden !important; }
+  .certificate-print-root, .certificate-print-root * { visibility: visible !important; }
+  .certificate-print-root {
+    position: fixed !important;
+    inset: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: #fff !important;
+  }
+  .certificate-sheet {
+    width: 100% !important;
+    height: 7.2in !important;
+    padding: 0.2in !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+  .certificate-inner { min-height: 0 !important; height: 100% !important; padding: 0.28in !important; }
+  .certificate-sheet::before { inset: 8px !important; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

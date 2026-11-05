@@ -23,20 +23,36 @@ class Content_model extends Model
         )->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function lessonBundle($lessonId, $userId)
+    public function lessonBundle($lessonId, $userId, $role)
     {
         $row = $this->db->raw(
-            'SELECT l.id, l.title, l.content, l.estimated_minutes, m.title module_title, c.title course_title, c.id course_id
-             FROM lessons l JOIN modules m ON m.id = l.module_id JOIN courses c ON c.id = m.course_id WHERE l.id = ? LIMIT 1',
+            'SELECT l.id, l.title, l.content, l.estimated_minutes estimatedMinutes,
+                    m.title moduleTitle, c.title courseTitle, c.id courseId,
+                    c.instructor_id instructorId, c.published
+             FROM lessons l JOIN modules m ON m.id = l.module_id JOIN courses c ON c.id = m.course_id
+             WHERE l.id = ? LIMIT 1',
             [$lessonId]
         )->fetch(PDO::FETCH_ASSOC);
         if (!$row) return null;
+        $allowed = $role === 'admin' || ($role === 'instructor' && $row['instructorId'] === $userId);
+        if ($role === 'student' && $row['published']) {
+            $allowed = (bool)$this->db->raw(
+                'SELECT id FROM course_enrollments WHERE course_id = ? AND user_id = ?
+                 UNION SELECT id FROM learning_paths WHERE course_id = ? AND user_id = ? LIMIT 1',
+                [$row['courseId'], $userId, $row['courseId'], $userId]
+            )->fetch(PDO::FETCH_ASSOC);
+        }
+        if (!$allowed) return null;
         $row['skills'] = $this->db->raw('SELECT s.name FROM lesson_skills ls JOIN skills s ON s.id = ls.skill_id WHERE ls.lesson_id = ?', [$lessonId])->fetchAll(PDO::FETCH_COLUMN);
-        $row['completed'] = (bool)$this->db->table('progress_records')
-            ->select('id')
-            ->where(['user_id' => $userId, 'lesson_id' => $lessonId])
-            ->limit(1)
-            ->get();
+        $row['completed'] = (bool)$this->db->raw(
+            "SELECT pr.id FROM progress_records pr WHERE pr.user_id = ? AND pr.lesson_id = ?
+             UNION
+             SELECT lpi.id FROM learning_path_items lpi
+             JOIN learning_paths lp ON lp.id = lpi.path_id
+             WHERE lp.user_id = ? AND lpi.lesson_id = ? AND lpi.status = 'done' LIMIT 1",
+            [$userId, $lessonId, $userId, $lessonId]
+        )->fetch(PDO::FETCH_ASSOC);
+        unset($row['instructorId'], $row['published']);
         return $row;
     }
 
@@ -77,6 +93,21 @@ class Content_model extends Model
             ->where('exercise_id', $exerciseId)
             ->order_by('position')
             ->get_all();
+    }
+
+    public function visibleTestCasesByExercise(): array
+    {
+        $rows = $this->db->raw(
+            'SELECT exercise_id, input, expected FROM test_cases WHERE hidden = 0 ORDER BY exercise_id, position'
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $cases = [];
+        foreach ($rows as $row) {
+            $cases[$row['exercise_id']][] = [
+                'input' => $row['input'],
+                'expected' => $row['expected'],
+            ];
+        }
+        return $cases;
     }
 
     /** Rubric criteria keyed by course, with the first rubric as fallback. */

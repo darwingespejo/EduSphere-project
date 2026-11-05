@@ -25,6 +25,14 @@ class User_model extends Model
         return $this->db->table('users')->where('id', $id)->limit(1)->get();
     }
 
+    public function activeVerifiedById($id)
+    {
+        return $this->db->table('users')
+            ->where(['id' => $id, 'active' => 1, 'email_verified' => 1])
+            ->limit(1)
+            ->get();
+    }
+
     public function createStudent($id, $name, $email, $hash)
     {
         $this->db->raw(
@@ -32,6 +40,62 @@ class User_model extends Model
              VALUES (?, ?, ?, ?, 'student', 0, 1, 1, 0, NOW(), NOW())",
             [$id, $name, $email, $hash]
         );
+    }
+
+    public function createGoogleStudent($id, $name, $email, $hash): void
+    {
+        $this->db->raw(
+            "INSERT INTO users (id, name, email, password_hash, role, xp, level, active, email_verified, created_at, updated_at)
+             VALUES (?, ?, ?, ?, 'student', 0, 1, 1, 1, NOW(), NOW())",
+            [$id, $name, $email, $hash]
+        );
+    }
+
+    public function verifyGoogleEmail($id): void
+    {
+        $this->db->raw(
+            'UPDATE users SET email_verified = 1, updated_at = NOW() WHERE id = ?',
+            [$id]
+        );
+    }
+
+    public function deleteById($id): void
+    {
+        $this->db->raw('DELETE FROM users WHERE id = ?', [$id]);
+    }
+
+    public function saveVerificationCode($userId, $codeHash): void
+    {
+        $this->db->raw(
+            'INSERT INTO email_verifications (id, user_id, code_hash, expires_at, created_at)
+             VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 15 MINUTE), NOW())
+             ON DUPLICATE KEY UPDATE
+                code_hash = VALUES(code_hash),
+                expires_at = VALUES(expires_at),
+                created_at = NOW()',
+            [uuid4(), $userId, $codeHash]
+        );
+    }
+
+    public function verificationCodeFor($userId, $codeHash)
+    {
+        return $this->db->raw(
+            'SELECT id FROM email_verifications
+             WHERE user_id = ? AND code_hash = ? AND expires_at > NOW()
+             LIMIT 1',
+            [$userId, $codeHash]
+        )->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function verifyEmail($userId, $verificationId): void
+    {
+        $this->db->raw('UPDATE users SET email_verified = 1 WHERE id = ?', [$userId]);
+        $this->db->raw('DELETE FROM email_verifications WHERE id = ?', [$verificationId]);
+    }
+
+    public function deleteVerificationCode($userId): void
+    {
+        $this->db->raw('DELETE FROM email_verifications WHERE user_id = ?', [$userId]);
     }
 
     public function streakOf($userId)
@@ -56,7 +120,8 @@ class User_model extends Model
     {
         return [
             'rows' => $this->db->raw(
-                "SELECT id, name, email, role, active, xp, level, created_at FROM users ORDER BY FIELD(role, 'admin', 'instructor', 'student'), xp DESC"
+                "SELECT id, name, email, role, active = 1 AS active, xp, level, created_at AS createdAt
+                 FROM users ORDER BY FIELD(role, 'admin', 'instructor', 'student'), xp DESC"
             )->fetchAll(PDO::FETCH_ASSOC),
             'counts' => $this->db->table('users')
                 ->select('role')

@@ -17,7 +17,7 @@ export function OrbitHero() {
   return (
     <div
       ref={ref}
-      className="relative w-[320px] h-[320px] md:w-[420px] md:h-[420px] mx-auto"
+      className="relative w-[320px] h-[320px] md:w-[470px] md:h-[470px] mx-auto"
       aria-hidden
       onMouseMove={(e) => {
         const r = ref.current!.getBoundingClientRect();
@@ -27,11 +27,19 @@ export function OrbitHero() {
       onMouseLeave={() => { mx.set(0); my.set(0); }}
     >
       <motion.div style={{ x: coreX, y: coreY }} className="absolute inset-0">
-        <div className="absolute inset-[36%]" style={{ animation: "float-y 7s ease-in-out infinite" }}>
+        <div className="absolute inset-[31%]" style={{ animation: "float-y 7s ease-in-out infinite" }}>
           <div className="sphere3d w-full h-full" />
+          <div className="planet-face absolute inset-0 flex flex-col items-center justify-center gap-[12%]">
+            <div className="flex items-center gap-5">
+              <span className="planet-eye" />
+              <span className="planet-eye" />
+            </div>
+            <span className="planet-smile" />
+          </div>
           <div className="sphere-shadow" />
         </div>
       </motion.div>
+      <div className="planet-orbit absolute inset-[27%] rounded-[50%] border-[7px] border-amber/90" />
       <motion.div style={{ x: farX, y: farY }} className="absolute inset-0">
         <div className="sphere3d absolute w-[9%] h-[9%] top-[12%] right-[24%] opacity-90" style={{ animation: "float-y 5.2s ease-in-out infinite" }} />
         <div className="sphere3d absolute w-[6%] h-[6%] bottom-[16%] left-[18%] opacity-75" style={{ animation: "float-y 6.4s ease-in-out 1.1s infinite" }} />

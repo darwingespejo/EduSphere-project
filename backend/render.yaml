@@ -27,7 +27,9 @@ services:
         sync: false
       - key: DB_SSL_CA
         sync: false
-      - key: STRIPE_SECRET_KEY
+      - key: PAYMONGO_SECRET_KEY
+        sync: false
+      - key: PAYMONGO_WEBHOOK_SECRET
         sync: false
       - key: SMTP_HOST
         sync: false

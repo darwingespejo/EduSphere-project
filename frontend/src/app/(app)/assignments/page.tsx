@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
+import Link from "@/router/link";
 import { ChevronDown, ChevronUp, ClipboardCheck, Clock3, Code2 } from "lucide-react";
 import { EmptyState, PageHeader, SectionTitle } from "@/components/ui";
 import { SphereLoader } from "@/components/Logo";
@@ -99,7 +99,7 @@ export default function AssignmentsPage() {
                 </div>
                 {latest !== null && (
                   <div className="mt-4 rounded-xl bg-raised px-3.5 py-3 flex items-center justify-between text-sm">
-                    <span>Latest <span className="font-mono">{latest}%{assignment.latestPassed !== null && assignment.latestTotal !== null ? ` · ${assignment.latestPassed}/${assignment.latestTotal} tests` : ""}</span></span>
+                    <span>Latest <span className="font-mono">{latest}%{assignment.latestPassed !== null && assignment.latestTotal !== null ? ` Â· ${assignment.latestPassed}/${assignment.latestTotal} tests` : ""}</span></span>
                     <span className={best === 100 ? "text-mint" : "text-muted"}>Best {best}%</span>
                   </div>
                 )}
@@ -111,12 +111,12 @@ export default function AssignmentsPage() {
                     </button>
                     {expandedId === assignment.id && (
                       <div className="mt-2 rounded-xl bg-raised p-3 space-y-2">
-                        {loadingHistory === assignment.id && <p className="text-muted text-xs">Loading attempts…</p>}
+                        {loadingHistory === assignment.id && <p className="text-muted text-xs">Loading attemptsâ€¦</p>}
                         {historyErrors[assignment.id] && <p className="text-coral text-xs">{historyErrors[assignment.id]}</p>}
                         {[...(attempts[assignment.id] ?? [])].reverse().map((attempt, index) => (
                           <div key={attempt.id} className="flex items-center justify-between gap-3 text-xs">
-                            <span className="text-muted">Attempt {assignment.attemptCount - index} · {new Date(attempt.submittedAt).toLocaleString()}{attempt.isLate ? " · late" : ""}</span>
-                            <span className="font-mono">{Number(attempt.score)}% · {attempt.passedCount}/{attempt.totalCount}</span>
+                            <span className="text-muted">Attempt {assignment.attemptCount - index} Â· {new Date(attempt.submittedAt).toLocaleString()}{attempt.isLate ? " Â· late" : ""}</span>
+                            <span className="font-mono">{Number(attempt.score)}% Â· {attempt.passedCount}/{attempt.totalCount}</span>
                           </div>
                         ))}
                       </div>

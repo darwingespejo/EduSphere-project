@@ -31,18 +31,18 @@ database/schema.sql · seed.sql · NAVICAT.md → EduSphere data setup
 | Area | Convention checked | Status |
 |---|---|---|
 | Controllers | `*Controller.php` classes extend LavaLust's auto-loaded `MY_Controller`; shared `before_action()` uses LavaLust CORS | conformed |
-| Models | `app/models/X_model.php`, `class X_model extends Model`, loaded via `$this->call->model('X_model')` | conformed (added this pass — SQL now lives in models, not controllers) |
+| Models | `app/models/X_model.php`, `class X_model extends Model`, loaded via `$this->call->model('X_model')`; all application database queries are kept in models | conformed |
 | Routes | `app/config/routes.php`, `$router->get/post/patch`, `{param}` placeholders | conformed |
 | Loader | `app/config/autoload.php` loads `database` library + `api` helper; controllers never re-`helper()` the same file | conformed |
 | Requests / responses | JSON, bearer tokens, IPs, webhook headers, and response emission use LavaLust `Request` / `Response` APIs; the existing `{success,message,data,errors}` envelope is preserved | conformed |
 | CORS | `ALLOWED_ORIGINS` populates LavaLust's `security_headers.cors` allow-list; API controllers invoke the framework `handle_cors()` helper | conformed |
-| Database | `$this->call->database()` in controllers, `load_class('database','database')::instance()` in models; LavaLust query-builder methods for straightforward reads and CRUD, prepared `raw($sql, $args)` where joins, aggregates, or database-specific expressions are not cleanly represented by the builder; Aiven TLS is added conditionally at the PDO options boundary | conforms with narrow driver patch |
+| Database | Models obtain the shared connection with `load_class('database','database')::instance()`; controllers, helpers, and libraries delegate persistence to models. Models use LavaLust query-builder methods for straightforward reads and CRUD, and prepared `raw($sql, $args)` where joins, aggregates, or database-specific expressions need it; Aiven TLS is added conditionally at the PDO options boundary | conforms with narrow driver patch |
 | Libraries | `app/libraries/*` plain classes loaded via `$this->call->library()` (JWT, engines, clients) | conformed |
 | Views | unused by design — JSON envelope via kernel Response header pattern | n/a (API-only) |
 
 ## Run locally
 
-1. From this directory, copy `.env.example` to `.env` and fill in DB + JWT values. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME` for email delivery. Use `tls` for STARTTLS, `ssl` for implicit TLS, or `none` for unencrypted SMTP. Supply the Aiven CA file to the container and set `DB_SSL_CA` to its in-container path when connecting to Aiven.
+1. From this directory, copy `.env.example` to `.env` and fill in DB + JWT values. Set `GOOGLE_CLIENT_ID` to the same web client ID used by the frontend for Google sign-in. Configure Resend with `RESEND_API_KEY` and a verified `MAIL_FROM` sender, or configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME` for SMTP. Use `tls` for STARTTLS, `ssl` for implicit TLS, or `none` for unencrypted SMTP. If PHP cURL has no system trust store, set `CURL_CA_BUNDLE` to a trusted CA bundle path. Obtain the CA certificate for your Aiven service and save it as `backend/certs/aiven-ca.pem`; relative `DB_SSL_CA` paths resolve from this backend directory. A missing or unreadable CA now returns a JSON 503 instead of a blank HTTP 500.
 2. Build and start the LavaLust API from the `backend/` directory:
 
    ```bash
@@ -58,21 +58,23 @@ The Docker build uses the LavaLust framework already present in this directory; 
 
 ## Aiven SSL
 
-When `DB_SSL_CA` points to Aiven's CA certificate, the LavaLust PDO connection verifies the server certificate. This setting is conditional and does not enable TLS options for local databases that do not provide a CA path.
+When `DB_SSL_CA` points to Aiven's CA certificate, the LavaLust PDO connection verifies the server certificate. This setting is conditional and does not enable TLS options for local databases that do not provide a CA path. Do not remove the CA setting to bypass certificate validation for a remote database.
 
 ## Render deploy
 
 `render.yaml` is a blueprint for one Docker web service. The Dockerfile builds this complete LavaLust project, enables `mod_rewrite` for LavaLust's `public/index.php`, installs `pdo_mysql`, and honors Render's `PORT`. Set `DB_SSL_CA` to the mounted path of Aiven's CA certificate. Health check: `/api/v1/health`.
 
-## Frontend integration and current scope
+## React frontend integration and current scope
 
-The Next.js frontend can be pointed at this API by setting `NEXT_PUBLIC_API_BASE_URL` (for local Docker, `http://localhost:8080`) and adding the frontend origin to `ALLOWED_ORIGINS`. Leave that variable blank to continue using the existing Next.js API routes.
+The standalone React frontend uses Vite's `/api` proxy to reach this API at `http://127.0.0.1:8080` during development. For a separately hosted API, set `VITE_API_BASE_URL` in the frontend environment and add the frontend origin to `ALLOWED_ORIGINS`.
 
 Set `JWT_SECRET` to at least 32 random characters before using sign-in or registration. The API intentionally has no built-in development signing key.
 
-This is a **partial backend port**, not yet a drop-in replacement for all 42 Next.js API route files. The LavaLust routes currently cover authentication, catalog/lessons, placement and learning paths, exercises/playground, submissions and peer review, analytics, credentials, sessions, notifications, payments, uploads, and admin users. Course authoring/enrollment/materials/final assessments and coding-assignment authoring/attempt APIs still need migration. Keep the Next.js API routes until those flows have equivalent LavaLust endpoints and are verified; deleting them now would break existing screens.
+Billing uses PayMongo hosted checkout with GCash, Maya, and card. Pro is a one-time ₱699 purchase; Team is ₱469 per seat with a three-seat minimum (₱1,407 total). Each successful purchase grants 30 days and does not auto-renew. Apply `database/migrations/005_paymongo_one_time_payments.sql` to an existing database before using checkout. Apply `database/migrations/006_module_quizzes.sql` to add instructor-created module quizzes and student quiz attempts. For local testing, set `PAYMONGO_SECRET_KEY` to a PayMongo test secret key and `PAYMONGO_WEBHOOK_SECRET` to the signing secret for a webhook subscribed to `checkout_session.payment.paid` at `/api/v1/payments/paymongo-webhook`; set `APP_URL` to the frontend origin and restart the API. Use a public HTTPS tunnel to receive PayMongo webhooks locally. Payments and plan access are recorded only after a valid signed paid webhook. Do not share or commit secret keys.
 
-Set `ALLOWED_ORIGINS` to the exact deployed frontend origin(s). The API uses bearer access tokens and the same JSON response envelope as the Next.js API.
+The LavaLust API covers account registration and email verification, existing-account and Google authentication, course catalog/detail/enrollment and authoring, course materials, module quizzes (multiple choice and identification), final assessments, coding-assignment authoring/submissions, placement and learning paths, exercises/playground, peer review, student/instructor/admin analytics, credentials, sessions, notifications, payments, uploads, and admin user management. In-app notifications and certificate awards are emailed to verified account addresses when the configured email provider accepts them. Course materials are stored under `backend/.data/course-materials`; keep that directory persistent and private in deployments.
+
+Set `ALLOWED_ORIGINS` to the exact deployed frontend origin(s). The API uses bearer access tokens and the standard JSON response envelope. PHP uploads must allow 25 MB files (`upload_max_filesize=25M`, `post_max_size=26M`); the frontend's local `npm run dev` command applies these PHP CLI limits automatically.
 
 ## Testing (3 canonical flows)
 

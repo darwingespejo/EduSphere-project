@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, CheckCircle2, Gauge, RotateCcw, XCircle } from "lucide-react";
-import Link from "next/link";
+import Link from "@/router/link";
 import { SphereLoader } from "@/components/Logo";
 import { PageHeader, Ring, SkillBar, EmptyState } from "@/components/ui";
 import { BadgeModal, type EarnedBadge } from "@/components/BadgeModal";
@@ -61,7 +61,7 @@ export default function AssessmentPage() {
     <div>
       <PageHeader
         title="Placement assessment"
-        sub="10 questions, about 5 minutes. Answer honestly rather than well — the learning path is built from your gaps, so sandbagging only cheats the sequencer."
+        sub="10 questions, about 5 minutes. Answer honestly rather than well â€” the learning path is built from your gaps, so sandbagging only cheats the sequencer."
         actions={<span className="tag">{answered}/{questions.length} answered</span>}
       />
       {placement.data.bestScore !== null && (
@@ -71,7 +71,7 @@ export default function AssessmentPage() {
         {questions.map((q, i) => (
           <motion.div key={q.id} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card p-6">
             <div className="flex items-center justify-between gap-3">
-              <p className="font-mono text-[11px] text-muted">Q{i + 1} · {q.points} pts{q.skill ? ` · ${q.skill}` : ""}</p>
+              <p className="font-mono text-[11px] text-muted">Q{i + 1} Â· {q.points} pts{q.skill ? ` Â· ${q.skill}` : ""}</p>
               {(answers[q.id] ?? "").trim() && <CheckCircle2 size={15} className="text-mint" />}
             </div>
             <p className="mt-2 font-medium leading-relaxed">{q.prompt}</p>
@@ -88,7 +88,7 @@ export default function AssessmentPage() {
                 })}
               </div>
             ) : (
-              <input className="input mt-4 font-mono" placeholder="Type your answer…" value={answers[q.id] ?? ""}
+              <input className="input mt-4 font-mono" placeholder="Type your answerâ€¦" value={answers[q.id] ?? ""}
                 onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))} />
             )}
           </motion.div>
@@ -96,9 +96,9 @@ export default function AssessmentPage() {
       </div>
       <div className="sticky bottom-5 mt-8 max-w-3xl">
         <div className="card p-4 flex items-center justify-between gap-4 shadow-2xl">
-          <p className="text-sm text-muted">{allAnswered ? "All answered — ready to grade." : `${questions.length - answered} left unanswered will count as misses.`}</p>
+          <p className="text-sm text-muted">{allAnswered ? "All answered â€” ready to grade." : `${questions.length - answered} left unanswered will count as misses.`}</p>
           <button className="btn btn-primary" onClick={submit} disabled={busy || answered === 0}>
-            {busy ? "Grading…" : "Submit for grading"} <ArrowRight size={15} />
+            {busy ? "Gradingâ€¦" : "Submit for grading"} <ArrowRight size={15} />
           </button>
         </div>
       </div>

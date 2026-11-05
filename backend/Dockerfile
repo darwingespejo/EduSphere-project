@@ -3,6 +3,7 @@ FROM php:8.2-apache
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libzip-dev libpng-dev libonig-dev libcurl4-openssl-dev \
   && docker-php-ext-install pdo_mysql mbstring zip gd curl \
+  && printf 'post_max_size=16M\nupload_max_filesize=12M\n' > /usr/local/etc/php/conf.d/uploads.ini \
   && a2enmod rewrite headers \
   && rm -rf /var/lib/apt/lists/*
 

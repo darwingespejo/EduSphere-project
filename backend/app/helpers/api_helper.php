@@ -75,12 +75,12 @@ function jwt_verify($token)
 }
 
 // Bearer → user row (fresh from DB, so deactivation applies immediately). Exits 401.
-function auth_user($db)
+function auth_user($users)
 {
     $token = lava_instance()->request->bearer_token();
     $payload = $token ? jwt_verify($token) : null;
     if (!$payload || ($payload['typ'] ?? '') !== 'access') fail_api('Sign in to continue.', 401);
-    $user = $db->table('users')->where('id', $payload['sub'])->limit(1)->get();
+    $user = $users->byId($payload['sub']);
     if (!$user || !$user['active']) fail_api('Account unavailable.', 401);
     if (empty($user['email_verified'])) fail_api('Verify your email before signing in.', 403);
     return $user;
@@ -96,9 +96,9 @@ function jwt_secret(): string
     return $secret;
 }
 
-function require_role($db, array $roles)
+function require_role($users, array $roles)
 {
-    $user = auth_user($db);
+    $user = auth_user($users);
     if (!in_array($user['role'], $roles, true)) fail_api("You don't have access to this.", 403);
     return $user;
 }
@@ -118,14 +118,9 @@ function public_user(array $u)
 }
 
 // Sliding-window limiter backed by the DB so it survives restarts (audit_logs table).
-function rate_limited($db, $key, $max, $windowSec)
+function rate_limited($authModel, $key, $max, $windowSec)
 {
-    $since = date('Y-m-d H:i:s', time() - $windowSec);
-    $stmt = $db->raw("SELECT COUNT(*) c FROM audit_logs WHERE action = ? AND created_at > ?", ["rl:$key", $since]);
-    $n = (int)$stmt->fetch(PDO::FETCH_ASSOC)['c'];
-    if ($n >= $max) return true;
-    $db->raw("INSERT INTO audit_logs (id, action, created_at) VALUES (?, ?, NOW())", [uuid4(), "rl:$key"]);
-    return false;
+    return $authModel->rateLimited($key, $max, $windowSec);
 }
 
 function uuid4()

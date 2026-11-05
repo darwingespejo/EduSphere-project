@@ -2,43 +2,84 @@
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 class LabController extends MY_Controller
 {
-    private $db;
+    private $users;
+    private $auth;
     private $content;
     private $assessments;
     private $reviews;
     private $gamify;
     private $assigner;
+    private $classroom;
+    private $certificates;
 
     public function __construct()
     {
         parent::__construct();
-        $this->call->library('Engines');
         $this->call->library('Clients');
-        $this->db = $this->call->database();
+        $this->users = $this->call->model('User_model');
+        $this->auth = $this->call->model('Auth_model');
+        $gamifyModel = $this->call->model('Gamify_model');
+        $this->gamify = $this->call->library('Gamify', $gamifyModel);
         $this->content = $this->call->model('Content_model');
+        $this->classroom = $this->call->model('Classroom_model');
+        $this->certificates = $this->call->library('CourseCertificate', [
+            $this->call->model('Course_model'),
+            $this->users,
+            $this->gamify,
+        ]);
         $this->assessments = $this->call->model('Assessment_model');
         $this->reviews = $this->call->model('Review_model');
-        $this->gamify = new Gamify($this->db);
-        $this->assigner = new PeerAssigner($this->db, $this->gamify);
+        $this->assigner = $this->call->library('PeerAssigner', [$this->reviews, $this->gamify]);
     }
 
     public function exercises()
     {
-        $user = auth_user($this->db);
-        respond($this->content->exercisesWithBest($user['id']));
+        $user = auth_user($this->users);
+        $visibleCases = $this->content->visibleTestCasesByExercise();
+        $exercises = array_map(static function (array $exercise) use ($visibleCases): array {
+            $isJavascript = $exercise['language'] === 'javascript';
+            return [
+                'id' => $exercise['id'],
+                'title' => $exercise['title'],
+                'prompt' => $exercise['prompt'],
+                'language' => $exercise['language'],
+                'starterCode' => $exercise['starter_code'],
+                'course' => $exercise['course'],
+                'skill' => $exercise['skill'],
+                'visibleTests' => (int)$exercise['visible_tests'],
+                'totalTests' => (int)$exercise['total_tests'],
+                'bestPassed' => $exercise['best_passed'] === null ? null : (int)$exercise['best_passed'],
+                'runnerAvailable' => $isJavascript || Judge0Client::available(),
+                'serverRunnerAvailable' => Judge0Client::available(),
+                'visibleTestCases' => $isJavascript ? ($visibleCases[$exercise['id']] ?? []) : [],
+            ];
+        }, $this->content->exercisesWithBest($user['id']));
+        respond($exercises);
     }
 
-    /** Execution endpoint: user code runs only in the private Judge0 sandbox. */
+    /** Execution endpoint: JavaScript runs in Judge0 for submissions; other languages use Judge0. */
     public function run()
     {
-        $user = auth_user($this->db);
-        if (rate_limited($this->db, "run:{$user['id']}", 30, 60)) fail_api('Slow down — you can run code 30 times per minute.', 429);
+        $user = auth_user($this->users);
+        if (rate_limited($this->auth, "run:{$user['id']}", 30, 60)) fail_api('Slow down — you can run code 30 times per minute.', 429);
 
         $b = json_body();
         $code = (string)($b['code'] ?? '');
         if (trim($code) === '' || strlen($code) > 50000) fail_api('Nothing to run yet (max 50,000 chars).', 422);
         $language = $b['language'] ?? 'javascript';
         $submit = (bool)($b['submit'] ?? false);
+        $assignmentId = (string)($b['assignmentId'] ?? '');
+        $assignment = null;
+        if ($assignmentId !== '') {
+            if ($user['role'] !== 'student') fail_api('Only students can submit coding assignments.', 403);
+            if (!$submit) fail_api('Run the assignment before submitting it.', 422);
+            $assignment = $this->classroom->assignmentForStudent($assignmentId, $user['id']);
+            if (!$assignment) fail_api('Assignment not found or not available to your account.', 404);
+            if (!empty($b['exerciseId']) && $b['exerciseId'] !== $assignment['exerciseId']) {
+                fail_api('The selected exercise does not match this assignment.', 422);
+            }
+            $b['exerciseId'] = $assignment['exerciseId'];
+        }
 
         $exercise = null;
         $tests = [];
@@ -71,7 +112,27 @@ class LabController extends MY_Controller
         [$xpGained, $badges] = $this->rewardProgress($user['id'], $exercise, $execId, $result);
 
         $submissionId = null;
-        if ($submit) {
+        $assignmentAttempt = null;
+        if ($assignment) {
+            $isLate = !empty($assignment['dueAt']) && strtotime($assignment['dueAt']) < time();
+            $score = $result['total_count'] > 0
+                ? round($result['passed_count'] / $result['total_count'] * 100, 2)
+                : 0;
+            $assignmentAttempt = $this->classroom->recordAttempt(
+                $assignmentId,
+                $user['id'],
+                $execId,
+                $code,
+                $result['passed_count'],
+                $result['total_count'],
+                $score,
+                $isLate
+            );
+            $issued = $score >= 100
+                ? $this->certificates->issue($assignment['courseId'], $user['id'])
+                : ['code' => null];
+            $assignmentAttempt['certificateCode'] = $issued['code'];
+        } elseif ($submit) {
             $submissionId = uuid4();
             $this->reviews->insertSubmission($submissionId, $user['id'], $exercise['id'] ?? null, 'exercise', null, $code, $language);
         }
@@ -94,20 +155,19 @@ class LabController extends MY_Controller
             'results' => $clientResults,
             'xpGained' => $xpGained,
             'badges' => $badges,
-            'assignmentAttempt' => null,
-        ], 'Ran.');
+            'assignmentAttempt' => $assignmentAttempt,
+        ], $assignment ? 'Assignment submitted.' : 'Ran.');
     }
 
     private function execute(string $code, string $language, array $tests): array
     {
-        if ($language !== 'javascript') {
-            fail_api("Automated exercise tests for $language are not supported by this API yet.", 501);
-        }
         if (!Judge0Client::available()) {
-            fail_api('Secure code execution is not configured. Set JUDGE0_URL to a private Judge0 instance.', 503);
+            fail_api('Code execution is not configured. Set JUDGE0_URL to a Judge0 instance.', 503);
         }
         $t0 = microtime(true);
-        $cases = Judge0Client::run($code, $tests);
+        $cases = $language === 'javascript'
+            ? Judge0Client::run($code, $tests)
+            : Judge0Client::runProgramTests($code, $language, $tests);
         $passed = count(array_filter($cases, fn($c) => $c['passed']));
         return ['stdout' => '', 'stderr' => '', 'runtime_ms' => max(1, (int)round((microtime(true) - $t0) * 1000)),
             'passed_count' => $passed, 'total_count' => count($cases), 'results' => $cases];
@@ -138,7 +198,7 @@ class LabController extends MY_Controller
 
     public function submissions()
     {
-        $user = auth_user($this->db);
+        $user = auth_user($this->users);
         $rows = $user['role'] === 'student'
             ? $this->reviews->listSubmissions($user['id'])
             : $this->reviews->listSubmissions(null);
@@ -149,7 +209,7 @@ class LabController extends MY_Controller
     /** Assignment submission → automatic anonymous reviewer assignment (3 least-loaded classmates). */
     public function submit_assignment()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         $b = json_body();
         if (empty($b['exerciseId']) || trim((string)($b['code'] ?? '')) === '') fail_api('Add some code before submitting.', 422);
         $exercise = $this->content->exercise($b['exerciseId']);
@@ -168,7 +228,7 @@ class LabController extends MY_Controller
 
     public function review_queue()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         [$byCourse, $fallback] = $this->content->rubricByCourse();
         respond(array_map(fn($r) => [
             'assignmentId' => $r['assignment_id'], 'status' => $r['status'],
@@ -182,7 +242,7 @@ class LabController extends MY_Controller
 
     public function review_submit()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         $b = json_body();
         $assignmentId = (string)($b['assignmentId'] ?? '');
         $comment = trim((string)($b['comment'] ?? ''));
@@ -233,7 +293,7 @@ class LabController extends MY_Controller
 
     public function review_feedback()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         respond(array_map(fn($r) => [
             'reviewId' => $r['review_id'],
             'reviewerAlias' => 'Reviewer ' . alias_for($r['reviewer_id']),

@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "@/components/Toasts";
+import { api } from "@/lib/api";
+import type { User } from "@/lib/store";
 
 declare global {
   interface Window {
@@ -10,8 +12,7 @@ declare global {
         id: {
           initialize: (config: {
             client_id: string;
-            ux_mode: "redirect";
-            login_uri: string;
+            callback: (response: { credential?: string }) => void;
           }) => void;
           renderButton: (element: HTMLElement, options: Record<string, unknown>) => void;
         };
@@ -20,29 +21,54 @@ declare global {
   }
 }
 
-type GoogleAuthProps = { mode: "login" | "register" };
+export type GoogleSession = {
+  user: User;
+  access: string;
+  refresh: string;
+  isNew: boolean;
+};
 
-const initializedClients = new Set<string>();
+type GoogleAuthProps = {
+  mode: "login" | "register";
+  onSuccess: (session: GoogleSession) => void;
+};
 
-export default function GoogleAuth({ mode }: GoogleAuthProps) {
+export default function GoogleAuth({ mode, onSuccess }: GoogleAuthProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const onSuccessRef = useRef(onSuccess);
+  const [busy, setBusy] = useState(false);
+  const clientId = import.meta.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   useEffect(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
+
+  useEffect(() => {
     if (!clientId) return;
 
     const render = () => {
       if (!ref.current || !window.google) return;
-      const loginUri = `${process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin}/api/v1/auth/google`;
-      const key = `${clientId}:${loginUri}`;
-      if (!initializedClients.has(key)) {
-        window.google.accounts.id.initialize({
-          client_id: clientId,
-          ux_mode: "redirect",
-          login_uri: loginUri,
-        });
-        initializedClients.add(key);
-      }
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          if (!response.credential) {
+            toast.err("Google did not return a sign-in credential. Please try again.");
+            return;
+          }
+
+          setBusy(true);
+          void api.post<GoogleSession>("/api/v1/auth/google", {
+            credential: response.credential,
+          }).then((result) => {
+            setBusy(false);
+            if (!result.success) {
+              toast.err(result.message);
+              return;
+            }
+            onSuccessRef.current(result.data);
+          });
+        },
+      });
       window.google.accounts.id.renderButton(ref.current, {
         type: "standard",
         theme: "outline",
@@ -54,11 +80,16 @@ export default function GoogleAuth({ mode }: GoogleAuthProps) {
       });
     };
 
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    const existing = document.querySelector<HTMLScriptElement>(
+      'script[src="https://accounts.google.com/gsi/client"]',
+    );
     if (existing) {
-      if (window.google) render();
-      else existing.addEventListener("load", render, { once: true });
-      return;
+      if (window.google) {
+        render();
+      } else {
+        existing.addEventListener("load", render, { once: true });
+      }
+      return () => existing.removeEventListener("load", render);
     }
 
     const script = document.createElement("script");
@@ -68,9 +99,12 @@ export default function GoogleAuth({ mode }: GoogleAuthProps) {
     script.onload = render;
     script.onerror = () => toast.err("Google sign-in could not load. Check your connection and try again.");
     document.head.appendChild(script);
-  }, [mode]);
+    return () => {
+      script.onload = null;
+      script.onerror = null;
+    };
+  }, [clientId, mode]);
 
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   if (!clientId) {
     return (
       <div className="rounded-xl border border-dashed border-line bg-raised/70 px-3 py-2.5 text-center text-xs text-muted">
@@ -79,5 +113,10 @@ export default function GoogleAuth({ mode }: GoogleAuthProps) {
     );
   }
 
-  return <div ref={ref} className="flex justify-center" />;
+  return (
+    <div className="relative flex justify-center" aria-busy={busy}>
+      {busy && <div className="absolute inset-0 z-10 cursor-wait" aria-label="Signing in with Google" />}
+      <div ref={ref} />
+    </div>
+  );
 }

@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "@/router/navigation";
+import Link from "@/router/link";
 import { motion } from "framer-motion";
 import { ArrowLeft, Award, CheckCheck, Clock } from "lucide-react";
 import { SphereLoader } from "@/components/Logo";

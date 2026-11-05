@@ -2,35 +2,50 @@
 defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 class LearningController extends MY_Controller
 {
-    private $db;
+    private $users;
     private $content;
     private $assessments;
     private $paths_model;
+    private $auth;
     private $gamify;
     private $paths;
 
     public function __construct()
     {
         parent::__construct();
-        $this->call->library('Engines');
-        $this->db = $this->call->database();
+        $this->call->library('Clients');
+        $this->users = $this->call->model('User_model');
+        $gamifyModel = $this->call->model('Gamify_model');
+        $this->gamify = $this->call->library('Gamify', $gamifyModel);
         $this->content = $this->call->model('Content_model');
         $this->assessments = $this->call->model('Assessment_model');
         $this->paths_model = $this->call->model('Path_model');
-        $this->gamify = new Gamify($this->db);
-        $this->paths = new PathEngine($this->db, $this->gamify);
+        $this->auth = $this->call->model('Auth_model');
+        $this->paths = $this->call->library('PathEngine', [
+            $this->paths_model,
+            $this->content,
+            $this->gamify,
+            $this->users,
+        ]);
     }
 
     public function courses()
     {
-        auth_user($this->db);
-        respond($this->content->publishedCourses());
+        $user = auth_user($this->users);
+        $courses = $this->call->model('Course_model')->coursesForUser($user);
+        respond(array_map(static function (array $course): array {
+            $course['published'] = (bool)$course['published'];
+            $course['enrolled'] = (bool)$course['enrolled'];
+            $course['lessonCount'] = (int)$course['lessonCount'];
+            $course['completedLessons'] = (int)$course['completedLessons'];
+            return $course;
+        }, $courses));
     }
 
     public function lesson($id)
     {
-        $user = auth_user($this->db);
-        $lesson = $this->content->lessonBundle($id, $user['id']);
+        $user = auth_user($this->users);
+        $lesson = $this->content->lessonBundle($id, $user['id'], $user['role']);
         if (!$lesson) fail_api('Lesson not found.', 404);
         respond($lesson);
     }
@@ -39,7 +54,7 @@ class LearningController extends MY_Controller
 
     public function placement()
     {
-        $user = auth_user($this->db);
+        $user = auth_user($this->users);
         $asm = $this->assessments->placementHeader();
         if (!$asm) respond(['assessment' => null, 'questions' => [], 'bestScore' => null], 'No placement assessment.');
         respond([
@@ -52,7 +67,7 @@ class LearningController extends MY_Controller
     // Grades, writes per-skill mastery, then re-sequences the learning path around the gaps.
     public function placement_submit()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         $b = json_body();
         $answers = $b['answers'] ?? [];
         if (!is_array($answers) || count($answers) === 0) fail_api('Answer at least one question.', 422);
@@ -121,7 +136,7 @@ class LearningController extends MY_Controller
 
     public function path()
     {
-        $user = auth_user($this->db);
+        $user = auth_user($this->users);
         $path = $this->paths_model->activeFor($user['id']);
         if (!$path) {
             respond(['path' => null, 'hasPlacement' => $this->assessments->hasAttempt($user['id'])], 'No active learning path.');
@@ -131,7 +146,7 @@ class LearningController extends MY_Controller
 
     public function path_generate()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         $existing = $this->paths_model->activeFor($user['id']);
         $result = $this->paths->generate($user['id'], (bool)$existing);
         $badge = $result['created'] ? $this->gamify->award($user['id'], 'pathfinder') : null;
@@ -139,9 +154,48 @@ class LearningController extends MY_Controller
         respond($this->pathPayload($path) + ['badge' => $badge], $existing ? 'Path regenerated around your latest scores.' : 'Your path is ready.');
     }
 
+    public function path_coach()
+    {
+        $user = require_role($this->users, ['student']);
+        $path = $this->paths_model->activeFor($user['id']);
+        if (!$path) fail_api('Build a learning path before asking Gemini for guidance.', 409);
+        if (!GeminiPathCoach::configured()) {
+            fail_api('Gemini is not configured. Add GEMINI_API_KEY to backend/.env and restart the API.', 503);
+        }
+        if (rate_limited($this->auth, "path-coach:{$user['id']}", 5, 3600)) {
+            fail_api('Gemini study guidance is limited to 5 requests per hour.', 429);
+        }
+
+        $items = $this->paths_model->itemsOf($path['id']);
+        $remaining = array_values(array_filter(
+            $items,
+            static fn($item) => $item['status'] !== 'done'
+        ));
+        $course = $this->content->courseById($path['course_id']);
+        $context = [
+            'course' => mb_substr((string)($course['title'] ?? 'Learning path'), 0, 120),
+            'pathRationale' => mb_substr((string)($path['rationale'] ?? ''), 0, 800),
+            'progress' => [
+                'completed' => count($items) - count($remaining),
+                'total' => count($items),
+            ],
+            'nextLessons' => array_map(static fn($item) => [
+                'title' => mb_substr((string)$item['title'], 0, 120),
+                'module' => mb_substr((string)$item['module_title'], 0, 100),
+                'status' => $item['status'],
+                'estimatedMinutes' => (int)$item['estimated_minutes'],
+            ], array_slice($remaining, 0, 12)),
+        ];
+
+        respond(
+            ['advice' => GeminiPathCoach::advise($context)],
+            'Gemini study guidance is ready.'
+        );
+    }
+
     public function path_progress()
     {
-        $user = require_role($this->db, ['student']);
+        $user = require_role($this->users, ['student']);
         $b = json_body();
         $result = $this->paths->completeItem((string)($b['itemId'] ?? ''), $user['id']);
         if (isset($result['error'])) fail_api($result['error'], $result['status']);
@@ -159,15 +213,30 @@ class LearningController extends MY_Controller
         respond([
             'completed' => $result['completed'],
             'certificateCode' => $result['certificate_code'] ?? null,
+            'certificateEmailSent' => $result['certificate_email_sent'] ?? false,
             'xp' => $xp['xp'], 'level' => $xp['level'], 'streak' => $streak, 'badges' => array_values($badges),
-        ], $result['completed'] ? 'Path complete — certificate issued.' : 'Lesson complete. Next item unlocked.');
+        ], $result['completed']
+            ? (!empty($result['certificate_email_sent'])
+                ? 'Path complete — certificate issued and emailed to your registered address.'
+                : 'Path complete — certificate issued, but email delivery failed. Resend it from Badges & certificates.')
+            : 'Lesson complete. Next item unlocked.');
     }
 
     private function pathPayload(array $path): array
     {
         return [
             'path' => $path,
-            'items' => $this->paths_model->itemsOf($path['id']),
+            'items' => array_map(static function (array $item): array {
+                return [
+                    'itemId' => $item['item_id'],
+                    'lessonId' => $item['lesson_id'],
+                    'title' => $item['title'],
+                    'moduleTitle' => $item['module_title'],
+                    'estimatedMinutes' => (int)$item['estimated_minutes'],
+                    'status' => $item['status'],
+                    'position' => (int)$item['position'],
+                ];
+            }, $this->paths_model->itemsOf($path['id'])),
             'course' => $this->content->courseById($path['course_id']),
         ];
     }

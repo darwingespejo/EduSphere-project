@@ -1,11 +1,12 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
+import Link from "@/router/link";
+import { useParams } from "@/router/navigation";
 import { Award, BookOpen, CheckCircle2, Download, GraduationCap, LockKeyhole } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui";
 import { SphereLoader } from "@/components/Logo";
 import { toast } from "@/components/Toasts";
+import ModuleQuizActivity from "@/components/ModuleQuizActivity";
 import { useRequireAuth } from "@/components/Shell";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/hooks";
@@ -18,6 +19,10 @@ type CourseDetail = {
     id: string; title: string; position: number;
     lessons: { id: string; title: string; estimatedMinutes: number; completed: boolean }[];
     materials: { id: string; name: string; contentType: string; bytes: number }[];
+    quizzes: {
+      id: string; title: string; questionCount: number; bestScore: number | null; attempts: number;
+      questions: { id: string; type: "multiple_choice" | "identification"; prompt: string; options: string[]; points: number }[];
+    }[];
   }[];
   requirements: {
     lessonsDone: boolean; lessonsCompleted: number; lessonsTotal: number;
@@ -147,6 +152,9 @@ export default function CourseDetailPage() {
                     <span className="flex items-center gap-2"><Download size={14} />{material.name}</span>
                     <span className="text-xs text-muted">{Math.max(1, Math.ceil(material.bytes / 1024))} KB</span>
                   </button>
+                ))}
+                {module.quizzes.map((quiz) => (
+                  <ModuleQuizActivity key={quiz.id} quiz={quiz} onAttemptSaved={() => void data.refetch()} />
                 ))}
               </div>
             </article>

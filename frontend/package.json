@@ -2,43 +2,37 @@
   "name": "edusphere",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "dev": "concurrently --kill-others-on-fail --names api,web \"npm:dev:api\" \"vite\"",
+    "dev:api": "php -d upload_max_filesize=25M -d post_max_size=26M -S 127.0.0.1:8080 -t ../backend/public ../backend/public/index.php",
+    "build": "vite build",
+    "start": "vite preview --host 127.0.0.1 --port 4173",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit",
-    "seed:sample-courses": "tsx src/db/seed-sample-courses.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
-    "bcryptjs": "^3.0.3",
     "canvas-confetti": "^1.9.4",
-    "dotenv": "17.3.1",
-    "drizzle-orm": "0.45.2",
     "framer-motion": "^14.3.0",
-    "jose": "^6.2.12",
     "lucide-react": "^1.59.0",
-    "mysql2": "^3.24.6",
-    "next": "16.2.6",
-    "nodemailer": "^10.2.1",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "zod": "^4.6.7",
+    "react-router-dom": "^7.18.4",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.1.17",
+    "@eslint/js": "^9.39.5",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "22.19.15",
-    "@types/nodemailer": "^8.0.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "drizzle-kit": "0.31.10",
+    "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.6",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
     "postcss": "8.5.8",
     "tailwindcss": "4.1.17",
-    "tsx": "^4.23.15",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.5"
   }
 }

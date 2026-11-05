@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import dynamic from "@/router/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
-import { Check, Eye, FlaskConical, Lock, Play, RotateCcw, Send, SquareTerminal, X } from "lucide-react";
+import { Check, Eye, Lock, Play, RotateCcw, Send, SquareTerminal, X } from "lucide-react";
 import { SphereLoader } from "@/components/Logo";
 import { PageHeader, SectionTitle } from "@/components/ui";
 import { BadgeModal, type EarnedBadge } from "@/components/BadgeModal";
@@ -10,7 +10,7 @@ import { toast } from "@/components/Toasts";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/store";
 
-const Monaco = dynamic(() => import("@monaco-editor/react"), { ssr: false, loading: () => <div className="skeleton h-[420px]" /> });
+const Monaco = dynamic(() => import("@monaco-editor/react"), { loading: () => <div className="skeleton h-[420px]" /> });
 const LANGUAGE_LABELS: Record<string, string> = {
   html: "HTML / CSS / JS",
   javascript: "JavaScript",
@@ -24,22 +24,180 @@ const FREE_RUN_TEMPLATES: Record<string, string> = {
   javascript: 'console.log("Hello, world!");\n',
   python: 'import json\nimport sys\n\nvalues = json.loads(sys.stdin.read() or "[]")\nprint(sum(values))\n',
   c: '#include <stdio.h>\n\nint main(void) {\n    int value;\n    long sum = 0;\n    while (scanf("%d", &value) == 1) sum += value;\n    printf("%ld\\n", sum);\n    return 0;\n}\n',
-  cpp: '#include <iostream>\n\nint main() {\n    long long value, sum = 0;\n    while (std::cin >> value) sum += value;\n    std::cout << sum << "\\\\n";\n}\n',
+  cpp: '#include <iostream>\n\nint main() {\n    long long value, sum = 0;\n    while (std::cin >> value) sum += value;\n    std::cout << sum << "\\n";\n}\n',
   csharp: 'using System;\nusing System.Linq;\n\nclass Program {\n    static void Main() {\n        var input = Console.In.ReadToEnd();\n        var sum = input.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)\n            .Sum(value => long.Parse(value));\n        Console.WriteLine(sum);\n    }\n}\n',
 };
 
 type Exercise = {
   id: string; title: string; prompt: string; language: string; starterCode: string;
   course: string; skill: string | null; visibleTests: number; totalTests: number; bestPassed: number | null;
-  runnerAvailable: boolean;
+  runnerAvailable: boolean; serverRunnerAvailable: boolean; visibleTestCases: VisibleTestCase[];
 };
+type VisibleTestCase = { input: string; expected: string };
 type CaseResult = { input: string; expected: string; actual: string; passed: boolean; log: string[]; hidden: boolean };
 type Assignment = { id: string; exerciseId: string; title: string; instructions: string; dueAt: string | null };
 type RunResp = {
   stdout: string; stderr: string; runtimeMs: number; passedCount: number; totalCount: number;
   results: CaseResult[]; xpGained: number; badges: (EarnedBadge | null)[];
-  assignmentAttempt: { id: string; score: number; isLate: boolean } | null;
+  assignmentAttempt: { id: string; score: number; isLate: boolean; certificateCode: string | null } | null;
+  localOnly: boolean;
 };
+
+const LOCAL_RUNNER_DOCUMENT = `<!doctype html><meta charset="utf-8"><script>
+window.addEventListener("message", async function(event) {
+  const data = event.data;
+  if (!data || data.type !== "edusphere-local-run") return;
+  const started = performance.now();
+  const logs = [];
+  const print = function() {
+    const args = Array.from(arguments);
+    logs.push(args.map(function(value) {
+      if (typeof value === "string") return value;
+      try { return JSON.stringify(value); } catch { return String(value); }
+    }).join(" "));
+  };
+  const safeConsole = { log: print, info: print, warn: print, error: print };
+  const stringify = function(value) {
+    if (typeof value === "undefined") return "undefined";
+    try { return JSON.stringify(value); } catch { return String(value); }
+  };
+  const canonical = function(value) {
+    if (Array.isArray(value)) return "[" + value.map(canonical).join(",") + "]";
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function(key) {
+        return JSON.stringify(key) + ":" + canonical(value[key]);
+      }).join(",") + "}";
+    }
+    return JSON.stringify(value);
+  };
+  try {
+    const AsyncFunction = Object.getPrototypeOf(async function() {}).constructor;
+    if (data.mode === "free") {
+      const execute = new AsyncFunction("stdin", "console", data.code);
+      await execute(data.stdin, safeConsole);
+      parent.postMessage({
+        type: "edusphere-local-result",
+        id: data.id,
+        result: { stdout: logs.join("\\n"), stderr: "", runtimeMs: Math.round(performance.now() - started), passedCount: 0, totalCount: 0, results: [], xpGained: 0, badges: [], assignmentAttempt: null, localOnly: true }
+      }, "*");
+      return;
+    }
+    const results = [];
+    for (const test of data.tests) {
+      logs.length = 0;
+      try {
+        const input = JSON.parse(test.input);
+        const expected = JSON.parse(test.expected);
+        const execute = new AsyncFunction("input", "console",
+          data.code + "\\n; if (typeof solve !== 'function') throw new Error('Define solve(input) to run tests.'); return await solve(input);"
+        );
+        const actualValue = await execute(input, safeConsole);
+        const actual = stringify(actualValue);
+        results.push({
+          input: test.input,
+          expected: test.expected,
+          actual: actual,
+          passed: canonical(actualValue) === canonical(expected),
+          log: logs.slice(),
+          hidden: false
+        });
+      } catch (error) {
+        results.push({
+          input: test.input,
+          expected: test.expected,
+          actual: "Error: " + (error && error.message ? error.message : String(error)),
+          passed: false,
+          log: logs.slice(),
+          hidden: false
+        });
+      }
+    }
+    const passedCount = results.filter(function(result) { return result.passed; }).length;
+    parent.postMessage({
+      type: "edusphere-local-result",
+      id: data.id,
+      result: { stdout: "", stderr: "", runtimeMs: Math.round(performance.now() - started), passedCount: passedCount, totalCount: results.length, results: results, xpGained: 0, badges: [], assignmentAttempt: null, localOnly: true }
+    }, "*");
+  } catch (error) {
+    parent.postMessage({
+      type: "edusphere-local-result",
+      id: data.id,
+      error: error && error.message ? error.message : String(error)
+    }, "*");
+  }
+});
+</script>`;
+
+function runJavaScriptLocally(
+  code: string,
+  mode: "free" | "exercise",
+  tests: VisibleTestCase[],
+  stdin: string,
+): Promise<RunResp> {
+  if (code.length > 50_000) return Promise.reject(new Error("Code exceeds the 50,000 character limit."));
+
+  return new Promise((resolve, reject) => {
+    const iframe = document.createElement("iframe");
+    iframe.title = "Isolated JavaScript runner";
+    iframe.setAttribute("sandbox", "allow-scripts");
+    iframe.hidden = true;
+    const id = crypto.randomUUID();
+    let settled = false;
+    let timeout = 0;
+
+    const finish = (error?: Error, result?: RunResp) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", onMessage);
+      iframe.remove();
+      if (error) reject(error);
+      else if (result) resolve(result);
+      else reject(new Error("The local code runner returned no result."));
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== iframe.contentWindow || event.data?.type !== "edusphere-local-result" || event.data.id !== id) return;
+      if (event.data.error) {
+        finish(new Error(String(event.data.error)));
+        return;
+      }
+      finish(undefined, normalizeRunResponse(event.data.result));
+    };
+
+    window.addEventListener("message", onMessage);
+    timeout = window.setTimeout(() => finish(new Error("Code execution timed out after 5 seconds.")), 5000);
+    iframe.addEventListener("load", () => {
+      iframe.contentWindow?.postMessage({ type: "edusphere-local-run", id, mode, code, tests, stdin }, "*");
+    }, { once: true });
+    iframe.srcdoc = LOCAL_RUNNER_DOCUMENT;
+    document.body.appendChild(iframe);
+  });
+}
+
+function normalizeRunResponse(value: Partial<RunResp> | null): RunResp {
+  const results = Array.isArray(value?.results) ? value.results : [];
+  return {
+    stdout: typeof value?.stdout === "string" ? value.stdout : "",
+    stderr: typeof value?.stderr === "string" ? value.stderr : "",
+    runtimeMs: Number(value?.runtimeMs) || 0,
+    passedCount: Number(value?.passedCount) || 0,
+    totalCount: Number(value?.totalCount) || 0,
+    results: results.map((result) => ({
+      ...result,
+      input: String(result?.input ?? ""),
+      expected: String(result?.expected ?? ""),
+      actual: String(result?.actual ?? ""),
+      passed: Boolean(result?.passed),
+      log: Array.isArray(result?.log) ? result.log.map(String) : [],
+      hidden: Boolean(result?.hidden),
+    })),
+    xpGained: Number(value?.xpGained) || 0,
+    badges: Array.isArray(value?.badges) ? value.badges : [],
+    assignmentAttempt: value?.assignmentAttempt ?? null,
+    localOnly: Boolean(value?.localOnly),
+  };
+}
 
 function getSavedCode(userId: string | undefined, exercise: Exercise): string {
   if (!userId) return exercise.starterCode;
@@ -82,7 +240,7 @@ export default function PlaygroundPage() {
           ? api.get<Assignment>(`/api/v1/coding-assignments/${assignmentId}`)
           : Promise.resolve(null),
       ]);
-      if (res.success && res.data.length) {
+      if (res.success && Array.isArray(res.data) && res.data.length) {
         if (assignmentRes && !assignmentRes.success) toast.err(assignmentRes.message);
         const requestedAssignment = assignmentRes?.success ? assignmentRes.data : null;
         const selected = res.data.find((exercise) => exercise.id === requestedAssignment?.exerciseId) ?? res.data[0];
@@ -119,30 +277,56 @@ export default function PlaygroundPage() {
 
   const runCode = async (submitAssignment = false) => {
     if (!active || running || isHtml) return;
+    if (submitAssignment && !active.serverRunnerAvailable) {
+      toast.info("Submission requires a configured Judge0 server. You can still practice locally.");
+      return;
+    }
     setRunning(true);
     setRun(null);
     const started = Date.now();
     const minWait = 650; // let the running state register — real runtime comes back in the payload
-    const res = await api.post<RunResp>("/api/v1/playground/run", {
-      ...(!freeRun ? { exerciseId: active.id } : {}),
-      code,
-      language: active.language,
-      ...(freeRun ? { input: stdin } : {}),
-      ...(submitAssignment && assignment && !freeRun ? { assignmentId: assignment.id, submit: true } : {}),
-    });
+    let result: RunResp;
+    if (active.language === "javascript" && !submitAssignment) {
+      try {
+        result = await runJavaScriptLocally(
+          code,
+          freeRun ? "free" : "exercise",
+          freeRun ? [] : active.visibleTestCases,
+          stdin,
+        );
+      } catch (error) {
+        setRunning(false);
+        toast.err(error instanceof Error ? error.message : "Local code execution failed.");
+        return;
+      }
+    } else {
+      const res = await api.post<RunResp>("/api/v1/playground/run", {
+        ...(!freeRun ? { exerciseId: active.id } : {}),
+        code,
+        language: active.language,
+        ...(freeRun ? { input: stdin } : {}),
+        ...(submitAssignment && assignment && !freeRun ? { assignmentId: assignment.id, submit: true } : {}),
+      });
+      if (!res.success) {
+        setRunning(false);
+        toast.err(res.message);
+        return;
+      }
+      result = normalizeRunResponse(res.data);
+    }
     const dwell = Math.max(0, minWait - (Date.now() - started));
     if (dwell) await new Promise((r) => setTimeout(r, dwell));
     setRunning(false);
-    if (!res.success) { toast.err(res.message); return; }
-    setRun(res.data);
+    setRun(result);
     setRightTab("console");
-    if (res.data.assignmentAttempt) {
-      const attempt = res.data.assignmentAttempt;
-      toast.ok(`Assignment submitted · ${attempt.score}%${attempt.isLate ? " · late" : ""}`);
+    if (result.localOnly) return;
+    if (result.assignmentAttempt) {
+      const attempt = result.assignmentAttempt;
+      toast.ok(`Assignment submitted · ${attempt.score}%${attempt.isLate ? " · late" : ""}${attempt.certificateCode ? ` · certificate ${attempt.certificateCode}` : ""}`);
     }
-    const earned = (res.data.badges ?? []).filter(Boolean) as EarnedBadge[];
+    const earned = result.badges.filter(Boolean) as EarnedBadge[];
     if (earned.length) setBadges(earned);
-    if (res.data.xpGained > 0) toast.ok(`+${res.data.xpGained} XP`);
+    if (result.xpGained > 0) toast.ok(`+${result.xpGained} XP`);
     if (!freeRun) {
       const me = await api.get<{ user: Parameters<typeof setUser>[0] }>("/api/v1/auth/me");
       if (me.success) setUser(me.data.user);
@@ -175,13 +359,13 @@ export default function PlaygroundPage() {
         ["log","warn","error"].forEach((k) => { const orig = console[k].bind(console); console[k] = (...a) => { send(k, a); orig(...a); }; });
         window.addEventListener("error", (e) => send("error", [e.message]));
       })();
-    <\/script>`
+    </script>`
     : "";
 
   return (
     <div>
       {badges.length > 0 && <BadgeModal badges={badges} onClose={() => setBadges(badges.slice(1))} />}
-      <PageHeader title="Playground" sub="Run code in free practice without an assignment, or work through the course exercises. JavaScript runs locally; Python, C, C++, and C# use your private Judge0 runner." />
+      <PageHeader title="Playground" sub="Run code in free practice without an assignment, or work through the course exercises. JavaScript runs locally; Python, C, C++, and C# use the configured Judge0 runner." />
 
       {assignment && (
         <div className="card p-5 mb-4 border-primary/30">
@@ -224,7 +408,7 @@ export default function PlaygroundPage() {
             {!freeRun && <p className="eyebrow px-2 pb-1.5">Exercises</p>}
             {!freeRun && languageExercises.map((ex) => {
               const on = ex.id === activeId;
-              const passedAll = ex.bestPassed !== null && ex.bestPassed === ex.totalTests;
+              const passedAll = ex.language !== "javascript" && ex.bestPassed !== null && ex.bestPassed === ex.totalTests;
               return (
                 <button key={ex.id} onClick={() => pick(ex.id)}
                   className={`w-full text-left rounded-xl px-3 py-2.5 transition-colors ${on ? "bg-primary/12 border border-primary/30" : "hover:bg-raised border border-transparent"}`}>
@@ -232,7 +416,7 @@ export default function PlaygroundPage() {
                     <p className={`text-[13px] font-medium truncate ${on ? "text-primary" : ""}`}>{ex.title}</p>
                     {passedAll && <Check size={13} className="text-mint shrink-0" />}
                   </div>
-                  <p className="text-[11px] text-muted font-mono mt-0.5">{LANGUAGE_LABELS[ex.language] ?? ex.language} · {ex.totalTests} tests</p>
+                  <p className="text-[11px] text-muted font-mono mt-0.5">{LANGUAGE_LABELS[ex.language] ?? ex.language} · {ex.language === "javascript" ? `${ex.visibleTests} visible tests` : `${ex.totalTests} tests`}</p>
                 </button>
               );
             })}
@@ -321,7 +505,7 @@ export default function PlaygroundPage() {
                         </button>
                       )}
                       {assignment && !isHtml && (
-                        <button onClick={() => void runCode(true)} disabled={running || !active.runnerAvailable} className="btn btn-mint !py-2">
+                        <button onClick={() => void runCode(true)} disabled={running || !active.serverRunnerAvailable} className="btn btn-mint !py-2">
                           <Send size={13} /> Submit assignment
                         </button>
                       )}
@@ -333,16 +517,30 @@ export default function PlaygroundPage() {
 
                   {rightTab === "console" ? (
                     <div className="monaco-wrap bg-[#0d1024] min-h-[420px] p-4 overflow-y-auto max-h-[520px]">
+                      {active.language === "javascript" && !freeRun && (
+                        <p className="mb-3 rounded-lg border border-mint/30 bg-mint/5 p-3 text-sm text-mint">
+                          Runs in an isolated browser frame using visible tests only. Local results are for practice and do not award XP or count toward a score.
+                        </p>
+                      )}
                       {!isHtml && !active.runnerAvailable && (
                         <p className="mb-3 rounded-lg border border-amber/40 bg-amber/5 p-3 text-sm text-amber">
-                          {freeRun ? "Free practice is ready. " : "Practice mode is available: edit your code here and it will be saved in this browser. "}
-                          Running {freeRun ? "code" : `tests for ${LANGUAGE_LABELS[active.language] ?? active.language}`} requires a private Judge0 instance configured with <code>JUDGE0_URL</code>.
+                          Practice mode is available and your code is saved in this browser. Running {freeRun ? "code" : `tests for ${LANGUAGE_LABELS[active.language] ?? active.language}`} requires a Judge0 instance configured with <code>JUDGE0_URL</code>.
+                        </p>
+                      )}
+                      {!isHtml && active.language !== "javascript" && active.runnerAvailable && (
+                        <p className="mb-3 rounded-lg border border-amber/40 bg-amber/5 p-3 text-sm text-amber">
+                          Code and input are sent to the configured Judge0 service. Avoid passwords, API keys, or other sensitive data.
+                        </p>
+                      )}
+                      {active.language === "javascript" && freeRun && (
+                        <p className="mb-3 rounded-lg border border-mint/30 bg-mint/5 p-3 text-sm text-mint">
+                          JavaScript runs locally in an isolated browser frame. Use <code>console.log(...)</code> for output; no runner account is needed.
                         </p>
                       )}
                       {!run && !running && (
                         <div className="text-[#7a7fa8] font-mono text-[12.5px] space-y-1.5 py-2">
                           <p>{freeRun ? "// press Run to execute this program with the standard input above" : isHtml ? "// HTML mode — use the Preview tab and Submit for review." : isCompiledLanguage ? "// read the test input from standard input and print one result line" : "// press Run to execute your solve() against the test cases"}</p>
-                          {active.bestPassed !== null && <p>{`// personal best here: ${active.bestPassed}/${active.totalTests} passed`}</p>}
+                          {active.language !== "javascript" && active.bestPassed !== null && <p>{`// personal best here: ${active.bestPassed}/${active.totalTests} passed`}</p>}
                         </div>
                       )}
                       {running && (
@@ -386,7 +584,7 @@ export default function PlaygroundPage() {
                           </AnimatePresence>
                           {!freeRun && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: run.results.length * 0.14 + 0.15 }}
                             className="font-mono text-[12px] text-[#8b8fc0] pt-1">
-                            {run.passedCount}/{run.totalCount} passed · {run.runtimeMs} ms{run.xpGained > 0 ? ` · +${run.xpGained} XP` : ""}
+                            {run.passedCount}/{run.totalCount} {run.localOnly ? "visible tests passed · local only" : "passed"} · {run.runtimeMs} ms{run.xpGained > 0 ? ` · +${run.xpGained} XP` : ""}
                           </motion.p>}
                           {run.assignmentAttempt && (
                             <p className="rounded-lg bg-[#151a36] px-3 py-2 font-mono text-xs text-[#c9d1ff]">

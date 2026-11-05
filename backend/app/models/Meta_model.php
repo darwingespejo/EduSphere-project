@@ -25,9 +25,13 @@ class Meta_model extends Model
                ON l.skill_id = sc.skill_id AND l.m = sc.measured_at WHERE sc.user_id = ?',
             [$user['id'], $user['id']]
         )->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($mastery as &$skill) {
+            $skill['score'] = (int)$skill['score'];
+        }
+        unset($skill);
         $lessons = $this->db->raw('SELECT COUNT(*) c, COALESCE(SUM(time_spent_sec),0)/60 m FROM progress_records WHERE user_id = ?', [$user['id']])->fetch(PDO::FETCH_ASSOC);
         $path = $this->db->raw(
-            "SELECT COUNT(*) total, SUM(status = 'done') done FROM learning_path_items pi JOIN learning_paths p ON p.id = pi.path_id WHERE p.user_id = ? AND p.status = 'active'",
+            "SELECT COUNT(*) total, SUM(pi.status = 'done') done FROM learning_path_items pi JOIN learning_paths p ON p.id = pi.path_id WHERE p.user_id = ? AND p.status = 'active'",
             [$user['id']]
         )->fetch(PDO::FETCH_ASSOC);
 
@@ -56,6 +60,17 @@ class Meta_model extends Model
             $days[] = ['date' => $d, 'lessons' => (int)($lessons[$d] ?? 0), 'runs' => (int)($runs[$d] ?? 0)];
         }
         return $days;
+    }
+
+    public function activePathVelocity($userId): float
+    {
+        $path = $this->db->table('learning_paths')
+            ->select('velocity')
+            ->where(['user_id' => $userId, 'status' => 'active'])
+            ->limit(1)
+            ->get();
+
+        return (float)($path['velocity'] ?? 0);
     }
 
     public function instructorAggregate()
@@ -116,6 +131,17 @@ class Meta_model extends Model
         )->fetch(PDO::FETCH_ASSOC);
     }
 
+    public function certificateForUser($code, $userId)
+    {
+        return $this->db->raw(
+            'SELECT c.code, c.issued_at, u.name holder, u.email, co.title course, co.level
+             FROM certificates c JOIN users u ON u.id = c.user_id
+             JOIN courses co ON co.id = c.course_id
+             WHERE c.code = ? AND c.user_id = ? LIMIT 1',
+            [$code, $userId]
+        )->fetch(PDO::FETCH_ASSOC);
+    }
+
     // ---- sessions ----
 
     public function upcomingSessions()
@@ -159,11 +185,71 @@ class Meta_model extends Model
 
     // ---- commerce / files ----
 
-    public function insertPayment($userId, $cents, $status = 'demo', $stripeSessionId = null)
+    public function insertPendingPayMongoPayment($userId, $cents, $sessionId, $plan)
     {
         $this->db->raw(
-            "INSERT INTO payments (id, user_id, amount_cents, currency, status, stripe_session_id, created_at) VALUES (?, ?, ?, 'usd', ?, ?, NOW())",
-            [uuid4(), $userId, $cents, $status, $stripeSessionId]
+            "INSERT INTO payments (id, user_id, amount_cents, currency, status, provider, provider_reference, plan, created_at)
+             VALUES (?, ?, ?, 'PHP', 'pending', 'paymongo', ?, ?, NOW())",
+            [uuid4(), $userId, $cents, $sessionId, $plan]
+        );
+    }
+
+    public function pendingPayMongoPayment($sessionId)
+    {
+        return $this->db->raw(
+            "SELECT user_id, amount_cents, plan FROM payments
+             WHERE provider = 'paymongo' AND provider_reference = ? AND status IN ('pending', 'paid') LIMIT 1",
+            [$sessionId]
+        )->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function latestPayMongoPayment($userId)
+    {
+        return $this->db->raw(
+            "SELECT user_id, amount_cents, plan, provider_reference FROM payments
+             WHERE provider = 'paymongo' AND user_id = ? AND status IN ('pending', 'paid')
+             ORDER BY created_at DESC LIMIT 1",
+            [$userId]
+        )->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function markPayMongoPaymentPaid($sessionId)
+    {
+        $this->db->raw(
+            "UPDATE payments SET status = 'paid'
+             WHERE provider = 'paymongo' AND provider_reference = ? AND status = 'pending'",
+            [$sessionId]
+        );
+    }
+
+    public function subscriptionOf($userId)
+    {
+        return $this->db->raw(
+            "SELECT plan,
+                    CASE WHEN expires_at IS NOT NULL AND expires_at <= NOW() THEN 'expired' ELSE status END status,
+                    expires_at expiresAt
+             FROM subscriptions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1",
+            [$userId]
+        )->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function activatePaidPlan($userId, $plan, $sessionId)
+    {
+        $existing = $this->db->raw(
+            'SELECT id FROM subscriptions WHERE provider_reference = ? LIMIT 1',
+            [$sessionId]
+        )->fetch(PDO::FETCH_ASSOC);
+        if ($existing) return;
+
+        $this->db->raw(
+            "UPDATE subscriptions SET status = 'replaced'
+             WHERE user_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())",
+            [$userId]
+        );
+        $this->db->raw(
+            "INSERT INTO subscriptions (id, user_id, plan, status, provider_reference, expires_at, created_at)
+             VALUES (?, ?, ?, 'active', ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW())",
+            [uuid4(), $userId, $plan, $sessionId]
         );
     }
 

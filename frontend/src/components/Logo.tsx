@@ -25,7 +25,7 @@ export function Logo({ size = 28 }: { size?: number }) {
   return (
     <span className="inline-flex items-center gap-2.5 select-none">
       <OrbitMark size={size} />
-      <span className="display font-bold text-[19px] tracking-tight">EduSphere</span>
+      <span className="display font-bold text-[19px] tracking-tight">Edu<span className="text-coral">Sphere</span></span>
     </span>
   );
 }

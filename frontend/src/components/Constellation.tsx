@@ -1,5 +1,5 @@
 "use client";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Lock } from "lucide-react";
 
@@ -11,19 +11,33 @@ export type PathNode = {
 // The learning path as a constellation: alternating nodes along a sine spine, lines draw
 // between neighbors, completed nodes glow, the active node pulses.
 export function Constellation({ items, onOpen }: { items: PathNode[]; onOpen: (n: PathNode) => void }) {
-  const W = 900;
-  const NODE_W = 132; // horizontal pitch per node
-  const H = 260;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(4);
+  const width = columns === 2 ? 420 : 900;
+  const rows = Math.ceil(items.length / columns);
+  const H = Math.max(150, rows * 145 + 20);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const updateColumns = () => setColumns(container.clientWidth < 600 ? 2 : 4);
+    updateColumns();
+    const observer = new ResizeObserver(updateColumns);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   const nodes = useMemo(() => {
     return items.map((it, i) => {
-      const x = 90 + i * NODE_W;
-      const y = H / 2 + Math.sin(i * 1.35) * 72;
+      const row = Math.floor(i / columns);
+      const indexInRow = i % columns;
+      const column = row % 2 === 0 ? indexInRow : columns - 1 - indexInRow;
+      const x = ((column + 0.5) * width) / columns;
+      const y = 55 + row * 145 + Math.sin(indexInRow * 1.35) * 12;
       return { ...it, x, y, i };
     });
-  }, [items]);
-
-  const width = Math.max(W, 140 + items.length * NODE_W);
+  }, [columns, items, width]);
 
   const segColor = (a: PathNode & { x: number; y: number }, b: PathNode & { x: number; y: number }) => {
     if (a.status === "done" && b.status === "done") return "var(--mint)";
@@ -32,8 +46,8 @@ export function Constellation({ items, onOpen }: { items: PathNode[]; onOpen: (n
   };
 
   return (
-    <div className="overflow-x-auto pb-2 -mx-2 px-2">
-      <svg width={width} height={H} viewBox={`0 0 ${width} ${H}`} role="list" aria-label="Learning path">
+    <div ref={containerRef} className="w-full min-w-0">
+      <svg width="100%" height={H} viewBox={`0 0 ${width} ${H}`} preserveAspectRatio="xMidYMin meet" role="list" aria-label="Learning path">
         {/* faint boundary orbit */}
         <ellipse cx={width / 2} cy={H / 2} rx={width / 2 - 20} ry={H / 2 - 24} fill="none" stroke="var(--line)" strokeDasharray="3 7" />
         {nodes.slice(0, -1).map((a, i) => {

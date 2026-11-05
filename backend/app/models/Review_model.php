@@ -74,22 +74,30 @@ class Review_model extends Model
         return $rows ? max(array_map('intval', $rows)) : 0;
     }
 
-    public function reviewerCandidates($authorId, $limit)
+    public function reviewerCandidates($authorId, $submissionId, $limit)
     {
         return $this->db->raw(
             "SELECT u.id, (SELECT COUNT(*) FROM peer_assignments pa WHERE pa.reviewer_id = u.id) load
              FROM users u WHERE u.role = 'student' AND u.active = 1 AND u.id != ?
+               AND NOT EXISTS (
+                   SELECT 1 FROM peer_assignments existing
+                   WHERE existing.submission_id = ? AND existing.reviewer_id = u.id
+               )
              ORDER BY load ASC, RAND() LIMIT " . intval($limit),
-            [$authorId]
+            [$authorId, $submissionId]
         )->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function insertAssignment($submissionId, $reviewerId)
+    public function tryInsertAssignment($submissionId, $reviewerId): bool
     {
-        $this->db->raw(
-            "INSERT INTO peer_assignments (id, submission_id, reviewer_id, status, assigned_at) VALUES (?, ?, ?, 'pending', NOW())",
+        $statement = $this->db->raw(
+            "INSERT INTO peer_assignments (id, submission_id, reviewer_id, status, assigned_at)
+             VALUES (?, ?, ?, 'pending', NOW())
+             ON DUPLICATE KEY UPDATE reviewer_id = reviewer_id",
             [uuid4(), $submissionId, $reviewerId]
         );
+
+        return $statement->rowCount() > 0;
     }
 
     public function queueFor($reviewerId)

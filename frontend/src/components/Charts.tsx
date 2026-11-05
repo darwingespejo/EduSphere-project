@@ -13,7 +13,6 @@ export function Radar({ data, size = 300 }: { data: { skill: string; score: numb
     Array.from({ length: n }, (_, i) => `${i === 0 ? "M" : "L"}${pt(i, f).join(",")}`).join(" ") + " Z";
   const shape = useMemo(
     () => data.map((d, i) => `${i === 0 ? "M" : "L"}${pt(i, d.score / 100).join(",")}`).join(" ") + " Z",
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [data, size]
   );
 

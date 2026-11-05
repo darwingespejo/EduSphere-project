@@ -4,16 +4,17 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 /**
  * Access (15 min) + refresh (30 d) token pairs. Refresh tokens are single-use:
  * the server stores only sha256(jti), and revokes it on rotation.
- * Uses jwt_sign/jwt_verify from helpers/api_helper.php.
+ * Uses jwt_sign/jwt_verify from helpers/api_helper.php and delegates persistence
+ * to Auth_model and User_model.
  */
 class Jwt_service
 {
-    // LavaLust Database instance (raw() with bound params), not a raw PDO handle.
-    private $db;
+    private $tokens;
+    private $users;
 
-    public function __construct($db)
+    public function __construct(array $dependencies)
     {
-        $this->db = $db;
+        [$this->tokens, $this->users] = $dependencies;
     }
 
     public function issue(array $user): array
@@ -21,10 +22,7 @@ class Jwt_service
         $access = jwt_sign(['sub' => $user['id'], 'role' => $user['role'], 'typ' => 'access', 'jti' => bin2hex(random_bytes(8))], 900);
         $jti = uuid4();
         $refresh = jwt_sign(['sub' => $user['id'], 'typ' => 'refresh', 'jti' => $jti], 30 * 86400);
-        $this->db->raw(
-            'INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 30 DAY), NOW())',
-            [uuid4(), $user['id'], hash('sha256', $jti)]
-        );
+        $this->tokens->storeRefreshToken(uuid4(), $user['id'], hash('sha256', $jti));
         return ['access' => $access, 'refresh' => $refresh];
     }
 
@@ -33,17 +31,13 @@ class Jwt_service
     {
         $payload = jwt_verify($token);
         if (!$payload || ($payload['typ'] ?? '') !== 'refresh') return null;
-        $stmt = $this->db->raw(
-            'SELECT id FROM refresh_tokens WHERE user_id = ? AND token_hash = ? AND revoked_at IS NULL AND expires_at > NOW() LIMIT 1',
-            [$payload['sub'], hash('sha256', $payload['jti'])]
+        $row = $this->tokens->validRefreshToken(
+            $payload['sub'],
+            hash('sha256', $payload['jti'])
         );
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$row) return null;
-        $this->db->raw('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = ?', [$row['id']]);
-        $user = $this->db->table('users')
-            ->where(['id' => $payload['sub'], 'active' => 1, 'email_verified' => 1])
-            ->limit(1)
-            ->get();
+        $this->tokens->revokeRefreshTokenById($row['id']);
+        $user = $this->users->activeVerifiedById($payload['sub']);
         if (!$user) return null;
         return ['user' => $user] + $this->issue($user);
     }
@@ -52,9 +46,9 @@ class Jwt_service
     {
         $payload = jwt_verify($token);
         if (!$payload || empty($payload['jti'])) return;
-        $this->db->raw(
-            'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = ? AND token_hash = ?',
-            [$payload['sub'], hash('sha256', $payload['jti'])]
+        $this->tokens->revokeRefreshToken(
+            $payload['sub'],
+            hash('sha256', $payload['jti'])
         );
     }
 }

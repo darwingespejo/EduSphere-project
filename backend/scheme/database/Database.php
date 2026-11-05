@@ -268,12 +268,26 @@ class Database {
             PDO::ATTR_EMULATE_PREPARES   => false,
         );
 
-        if ($driver === 'mysql' && getenv('DB_SSL_CA')) {
-            $options[PDO::MYSQL_ATTR_SSL_CA] = getenv('DB_SSL_CA');
-            $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
-        }
-
         try {
+            $ssl_ca = getenv('DB_SSL_CA');
+            if ($driver === 'mysql' && $ssl_ca) {
+                if (!is_file($ssl_ca) && !str_starts_with($ssl_ca, '/') && !preg_match('/^[A-Za-z]:[\\\\\\/]/', $ssl_ca)) {
+                    $ssl_ca = ROOT_DIR . ltrim($ssl_ca, '/\\');
+                }
+
+                if (!is_file($ssl_ca) || !is_readable($ssl_ca)) {
+                    throw new PDOException('DB_SSL_CA must point to a readable CA certificate file.');
+                }
+
+                if (class_exists('Pdo\\Mysql')) {
+                    $options[constant('Pdo\\Mysql::ATTR_SSL_CA')] = $ssl_ca;
+                    $options[constant('Pdo\\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')] = true;
+                } else {
+                    $options[PDO::MYSQL_ATTR_SSL_CA] = $ssl_ca;
+                    $options[PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT] = true;
+                }
+            }
+
             $this->db = new PDO($dsn, $username, $password, $options);
             $this->driver = $this->db->getAttribute(PDO::ATTR_DRIVER_NAME);
         } catch (Exception $e) {
@@ -282,7 +296,9 @@ class Database {
                 $e->getMessage(),
                 $this->get_sql ?? '',
                 $this->bind_values ?? [],
-                $e
+                $e,
+                'error_db',
+                503
             );
         }
     }

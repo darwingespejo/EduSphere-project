@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/router/link";
+import { useRouter } from "@/router/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Logo, SphereLoader } from "@/components/Logo";
-import GoogleAuth from "@/components/GoogleAuth";
 import { toast, ToastHost } from "@/components/Toasts";
+import GoogleAuth, { type GoogleSession } from "@/components/GoogleAuth";
 import { getPostAuthPath, hydrateAuth, useAuth } from "@/lib/store";
 import { api } from "@/lib/api";
 
@@ -40,6 +40,12 @@ export default function LoginPage() {
     toast.ok(`Signed in as ${(res.data.user as { name: string }).name.split(" ")[0]}.`);
     const nextPath = getPostAuthPath(res.data.user);
     router.replace(nextPath);
+  };
+
+  const handleGoogleSuccess = (session: GoogleSession) => {
+    useAuth.getState().setAuth(session.user, session.access, session.refresh);
+    toast.ok("Signed in with Google.");
+    router.replace(getPostAuthPath(session.user, { isNew: session.isNew }));
   };
 
   if (!hydrated) return <div className="min-h-screen grid place-items-center"><SphereLoader /></div>;
@@ -83,10 +89,12 @@ export default function LoginPage() {
               {busy ? "Checking…" : "Sign in"} <ArrowRight size={15} />
             </button>
           </form>
-          <div className="mt-5">
-            <div className="flex items-center gap-3 mb-3"><span className="h-px flex-1 bg-line" /><span className="text-[11px] uppercase tracking-[0.2em] text-muted">or</span><span className="h-px flex-1 bg-line" /></div>
-            <GoogleAuth mode="login" />
+          <div className="flex items-center gap-3 text-xs text-muted my-5">
+            <span className="h-px flex-1 bg-line" />
+            or continue with
+            <span className="h-px flex-1 bg-line" />
           </div>
+          <GoogleAuth mode="login" onSuccess={handleGoogleSuccess} />
           <p className="text-sm text-muted mt-6 text-center">No account yet? <Link href="/register" className="link">Create one</Link></p>
         </motion.div>
       </div>

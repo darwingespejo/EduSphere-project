@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/router/link";
 import { BookOpen, CheckCircle2, GraduationCap } from "lucide-react";
 import { PageHeader } from "@/components/ui";
 import { SphereLoader } from "@/components/Logo";

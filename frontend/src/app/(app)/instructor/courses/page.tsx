@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import Link from "next/link";
-import { BookOpen, ClipboardList, FileUp, Plus, Send } from "lucide-react";
+import Link from "@/router/link";
+import { BookOpen, ClipboardList, FileUp, Plus, Send, Trash2 } from "lucide-react";
 import { PageHeader, SectionTitle } from "@/components/ui";
 import { SphereLoader } from "@/components/Logo";
 import { toast } from "@/components/Toasts";
@@ -12,7 +12,22 @@ import { useApi } from "@/lib/hooks";
 type Course = { id: string; title: string; published: boolean };
 type CourseDetail = {
   course: { id: string; title: string };
-  modules: { id: string; title: string; lessons: { id: string; title: string }[]; materials: { id: string; name: string }[] }[];
+  modules: {
+    id: string;
+    title: string;
+    lessons: { id: string; title: string }[];
+    materials: { id: string; name: string }[];
+    quizzes: { id: string; title: string; questionCount: number; bestScore: number | null; attempts: number }[];
+  }[];
+};
+
+type QuizQuestionDraft = {
+  type: "multiple_choice" | "identification";
+  prompt: string;
+  options: string[];
+  correctOption: number;
+  acceptedAnswers: string;
+  points: number;
 };
 
 const sampleQuestions = JSON.stringify([
@@ -34,6 +49,15 @@ export default function InstructorCoursesPage() {
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonContent, setLessonContent] = useState("");
   const [estimatedMinutes, setEstimatedMinutes] = useState(20);
+  const [quizTitle, setQuizTitle] = useState("");
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionDraft[]>([{
+    type: "multiple_choice",
+    prompt: "",
+    options: ["", "", "", ""],
+    correctOption: 0,
+    acceptedAnswers: "",
+    points: 1,
+  }]);
   const [assessmentTitle, setAssessmentTitle] = useState("Final assessment");
   const [passScore, setPassScore] = useState(80);
   const [questionsJson, setQuestionsJson] = useState(sampleQuestions);
@@ -77,6 +101,42 @@ export default function InstructorCoursesPage() {
     toast.ok(result.message);
     setLessonTitle("");
     setLessonContent("");
+    void detail.refetch();
+  };
+  const createQuiz = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!selectedModuleId) return;
+    const questions = quizQuestions.map((question) => question.type === "multiple_choice"
+      ? {
+          type: question.type,
+          prompt: question.prompt,
+          options: question.options,
+          correctOption: question.correctOption,
+          points: question.points,
+        }
+      : {
+          type: question.type,
+          prompt: question.prompt,
+          acceptedAnswers: question.acceptedAnswers.split("\n").map((answer) => answer.trim()).filter(Boolean),
+          points: question.points,
+        });
+    setBusy(true);
+    const result = await api.post<{ id: string }>(`/api/v1/modules/${selectedModuleId}/quizzes`, {
+      title: quizTitle,
+      questions,
+    });
+    setBusy(false);
+    if (!result.success) { toast.err(result.message); return; }
+    toast.ok(result.message);
+    setQuizTitle("");
+    setQuizQuestions([{
+      type: "multiple_choice",
+      prompt: "",
+      options: ["", "", "", ""],
+      correctOption: 0,
+      acceptedAnswers: "",
+      points: 1,
+    }]);
     void detail.refetch();
   };
   const uploadMaterial = async (event: FormEvent<HTMLInputElement>) => {
@@ -171,7 +231,7 @@ export default function InstructorCoursesPage() {
                     {detail.data?.modules.map((module) => (
                       <button key={module.id} onClick={() => setModuleId(module.id)} className={`w-full rounded-lg border p-3 text-left ${module.id === selectedModuleId ? "border-primary/50 bg-primary/5" : "border-line"}`}>
                         <span className="font-medium text-sm">{module.title}</span>
-                        <span className="block text-xs text-muted mt-1">{module.lessons.length} lessons · {module.materials.length} materials</span>
+                        <span className="block text-xs text-muted mt-1">{module.lessons.length} lessons · {module.materials.length} materials · {module.quizzes.length} quizzes</span>
                       </button>
                     ))}
                     {!detail.data?.modules.length && <p className="text-sm text-muted">Add your first module to begin.</p>}
@@ -200,6 +260,100 @@ export default function InstructorCoursesPage() {
                     <input className="sr-only" type="file" disabled={!selectedModuleId || busy} onChange={(event) => void uploadMaterial(event)} />
                   </label>
                   {!selectedModuleId && <p className="text-xs text-muted mt-2">Create or select a module before uploading.</p>}
+                </section>
+                <section className="card p-5">
+                  <SectionTitle title="Add a quiz activity" sub="Students can take multiple-choice and identification questions in this module." right={<ClipboardList size={16} className="text-primary" />} />
+                  <form onSubmit={createQuiz} className="mt-4 space-y-4">
+                    <label className="block text-sm font-medium">Module
+                      <select className="input mt-1.5" value={selectedModuleId} onChange={(event) => setModuleId(event.target.value)} required>
+                        {detail.data?.modules.map((module) => <option key={module.id} value={module.id}>{module.title}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-sm font-medium">Quiz title
+                      <input className="input mt-1.5" value={quizTitle} onChange={(event) => setQuizTitle(event.target.value)} minLength={3} maxLength={160} required />
+                    </label>
+                    {quizQuestions.map((question, questionIndex) => (
+                      <fieldset key={questionIndex} className="rounded-xl border border-line p-4 space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <legend className="text-sm font-semibold">Question {questionIndex + 1}</legend>
+                          {quizQuestions.length > 1 && (
+                            <button type="button" className="btn btn-ghost !p-2" aria-label={`Remove question ${questionIndex + 1}`}
+                              onClick={() => setQuizQuestions((current) => current.filter((_, index) => index !== questionIndex))}>
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                        <label className="block text-sm">Question type
+                          <select className="input mt-1" value={question.type} onChange={(event) => {
+                            const type = event.target.value as QuizQuestionDraft["type"];
+                            setQuizQuestions((current) => current.map((item, index) => index === questionIndex ? { ...item, type } : item));
+                          }}>
+                            <option value="multiple_choice">Multiple choice</option>
+                            <option value="identification">Identification</option>
+                          </select>
+                        </label>
+                        <label className="block text-sm">Prompt
+                          <textarea className="input mt-1 min-h-20" value={question.prompt} onChange={(event) => {
+                            setQuizQuestions((current) => current.map((item, index) => index === questionIndex ? { ...item, prompt: event.target.value } : item));
+                          }} minLength={5} maxLength={2000} required />
+                        </label>
+                        {question.type === "multiple_choice" ? (
+                          <div className="space-y-2">
+                            <p className="text-xs text-muted">Select the radio button beside the correct option.</p>
+                            {question.options.map((option, optionIndex) => (
+                              <div key={optionIndex} className="flex items-center gap-2">
+                                <input type="radio" name={`correct-${questionIndex}`} aria-label={`Option ${optionIndex + 1} is correct`}
+                                  checked={question.correctOption === optionIndex}
+                                  onChange={() => setQuizQuestions((current) => current.map((item, index) => index === questionIndex ? { ...item, correctOption: optionIndex } : item))} />
+                                <input className="input" aria-label={`Question ${questionIndex + 1}, option ${optionIndex + 1}`}
+                                  placeholder={`Option ${optionIndex + 1}`} value={option} maxLength={500} required
+                                  onChange={(event) => setQuizQuestions((current) => current.map((item, index) => index === questionIndex
+                                    ? { ...item, options: item.options.map((value, choiceIndex) => choiceIndex === optionIndex ? event.target.value : value) }
+                                    : item))} />
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <label className="block text-sm">Accepted answers (one per line)
+                            <textarea className="input mt-1 min-h-20" value={question.acceptedAnswers} placeholder={"Example answer\nAlternative answer"} required
+                              onChange={(event) => setQuizQuestions((current) => current.map((item, index) => index === questionIndex ? { ...item, acceptedAnswers: event.target.value } : item))} />
+                          </label>
+                        )}
+                        <label className="block text-sm">Points
+                          <input className="input mt-1 w-28" type="number" min={1} max={100} value={question.points}
+                            onChange={(event) => setQuizQuestions((current) => current.map((item, index) => index === questionIndex ? { ...item, points: Number(event.target.value) } : item))} />
+                        </label>
+                      </fieldset>
+                    ))}
+                    <div className="flex flex-wrap justify-between gap-3">
+                      <button type="button" className="btn btn-ghost" disabled={quizQuestions.length >= 50}
+                        onClick={() => setQuizQuestions((current) => [...current, {
+                          type: "multiple_choice",
+                          prompt: "",
+                          options: ["", "", "", ""],
+                          correctOption: 0,
+                          acceptedAnswers: "",
+                          points: 1,
+                        }])}>
+                        <Plus size={14} /> Add question
+                      </button>
+                      <button className="btn btn-primary" disabled={busy || !selectedModuleId}>
+                        {busy ? "Saving…" : "Add quiz to module"}
+                      </button>
+                    </div>
+                  </form>
+                  {selectedModuleId && detail.data?.modules.find((module) => module.id === selectedModuleId)?.quizzes.length ? (
+                    <div className="mt-5 border-t border-line pt-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted">Quizzes in this module</p>
+                      <ul className="mt-2 space-y-2">
+                        {detail.data.modules.find((module) => module.id === selectedModuleId)?.quizzes.map((quiz) => (
+                          <li key={quiz.id} className="flex justify-between gap-3 text-sm">
+                            <span>{quiz.title}</span><span className="text-muted">{quiz.questionCount} questions</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </section>
               </div>
               <div className="space-y-5">

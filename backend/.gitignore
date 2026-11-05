@@ -5,6 +5,9 @@
 .env
 !.env.example
 
+# Service-specific database certificates
+certs/*.pem
+
 # Dependencies
 vendor/
 app/vendor/

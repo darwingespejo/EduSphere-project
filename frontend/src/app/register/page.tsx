@@ -1,13 +1,14 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/router/link";
+import { useRouter } from "@/router/navigation";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { toast, ToastHost } from "@/components/Toasts";
-import GoogleAuth from "@/components/GoogleAuth";
+import GoogleAuth, { type GoogleSession } from "@/components/GoogleAuth";
 import { api } from "@/lib/api";
+import { getPostAuthPath, useAuth } from "@/lib/store";
 
 type RegisterData = { email: string };
 
@@ -40,6 +41,12 @@ export default function RegisterPage() {
     router.replace("/verify-email");
   };
 
+  const handleGoogleSuccess = (session: GoogleSession) => {
+    useAuth.getState().setAuth(session.user, session.access, session.refresh);
+    toast.ok("Your account is ready.");
+    router.replace(getPostAuthPath(session.user, { isNew: session.isNew }));
+  };
+
   return (
     <div className="min-h-screen grid place-items-center p-6 relative overflow-hidden">
       <div className="glow-blob w-[420px] h-[420px] -top-32 -right-32" style={{ background: "var(--glow-mint)" }} />
@@ -67,10 +74,12 @@ export default function RegisterPage() {
             {busy ? "Creating…" : "Create account"} <ArrowRight size={15} />
           </button>
         </form>
-        <div className="mt-5">
-          <div className="flex items-center gap-3 mb-3"><span className="h-px flex-1 bg-line" /><span className="text-[11px] uppercase tracking-[0.2em] text-muted">or</span><span className="h-px flex-1 bg-line" /></div>
-          <GoogleAuth mode="register" />
+        <div className="flex items-center gap-3 text-xs text-muted my-5">
+          <span className="h-px flex-1 bg-line" />
+          or continue with
+          <span className="h-px flex-1 bg-line" />
         </div>
+        <GoogleAuth mode="register" onSuccess={handleGoogleSuccess} />
         <p className="text-sm text-muted mt-6 text-center">Already registered? <Link href="/login" className="link">Sign in</Link></p>
       </motion.div>
       <ToastHost />

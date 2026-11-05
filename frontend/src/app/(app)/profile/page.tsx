@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import Link from "@/router/link";
 import { motion } from "framer-motion";
 import { Camera, Check, Sparkles, Upload, Wand2 } from "lucide-react";
 import { toast } from "@/components/Toasts";
@@ -9,6 +9,40 @@ import { api } from "@/lib/api";
 import { buildProfileAvatar, useAuth, type User } from "@/lib/store";
 
 const MAX_BIO = 180;
+const MAX_PROFILE_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_PROFILE_PHOTO_DIMENSION = 512;
+
+async function optimizeProfilePhoto(file: File): Promise<string> {
+  const image = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, MAX_PROFILE_PHOTO_DIMENSION / Math.max(image.width, image.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Image processing is unavailable in this browser.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (result) => result ? resolve(result) : reject(new Error("The selected image could not be compressed.")),
+        "image/webp",
+        0.82,
+      );
+    });
+
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("The compressed image could not be read."));
+      reader.onerror = () => reject(new Error("The compressed image could not be read."));
+      reader.readAsDataURL(blob);
+    });
+  } finally {
+    image.close();
+  }
+}
 
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
@@ -16,6 +50,8 @@ export default function ProfilePage() {
   const [bio, setBio] = useState(user?.bio ?? "Building momentum, one lesson at a time.");
   const [avatar, setAvatar] = useState(user?.avatar ?? buildProfileAvatar(user?.name ?? "Student"));
   const [saving, setSaving] = useState(false);
+  const [processingImage, setProcessingImage] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -28,9 +64,19 @@ export default function ProfilePage() {
       setUser(res.data.user);
       setBio(res.data.user.bio ?? "Building momentum, one lesson at a time.");
       setAvatar(res.data.user.avatar ?? buildProfileAvatar(res.data.user.name));
+      setHasUnsavedChanges(false);
     });
     return () => { active = false; };
   }, [setUser]);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasUnsavedChanges]);
 
   if (!user) return null;
 
@@ -42,7 +88,7 @@ export default function ProfilePage() {
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("") || "ST";
 
-  const handleImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
@@ -50,18 +96,23 @@ export default function ProfilePage() {
       event.target.value = "";
       return;
     }
-    if (file.size > 1_000_000) {
-      toast.err("Profile photos must be 1 MB or smaller.");
+    if (file.size > MAX_PROFILE_PHOTO_BYTES) {
+      toast.err("Profile photos must be 10 MB or smaller.");
       event.target.value = "";
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setAvatar(reader.result);
-    };
-    reader.onerror = () => toast.err("The selected image could not be read.");
-    reader.readAsDataURL(file);
     event.target.value = "";
+    setProcessingImage(true);
+    try {
+      const optimized = await optimizeProfilePhoto(file);
+      setAvatar(optimized);
+      setHasUnsavedChanges(true);
+      toast.ok("Photo optimized and ready to save.");
+    } catch (error) {
+      toast.err(error instanceof Error ? error.message : "The selected image could not be processed.");
+    } finally {
+      setProcessingImage(false);
+    }
   };
 
   const handleSave = async () => {
@@ -73,13 +124,18 @@ export default function ProfilePage() {
       return;
     }
     setUser(res.data.user);
+    setBio(res.data.user.bio ?? bio);
+    setAvatar(res.data.user.avatar ?? avatar);
+    setHasUnsavedChanges(false);
     toast.ok("Profile saved — your orbit is looking sharper.");
   };
 
   const handleReset = async () => {
+    setSaving(true);
     const defaultAvatar = buildProfileAvatar(user.name);
     const defaultBio = "Building momentum, one lesson at a time.";
     const res = await api.patch<{ user: User }>("/api/v1/profile", { bio: defaultBio, avatar: defaultAvatar });
+    setSaving(false);
     if (!res.success) {
       toast.err(res.message);
       return;
@@ -87,6 +143,7 @@ export default function ProfilePage() {
     setAvatar(defaultAvatar);
     setBio(defaultBio);
     setUser(res.data.user);
+    setHasUnsavedChanges(false);
     toast.info("Profile reset to your default orbit look.");
   };
 
@@ -122,10 +179,10 @@ export default function ProfilePage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => fileInputRef.current?.click()} className="btn btn-primary">
-              <Upload size={15} /> Upload photo
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="btn btn-primary" disabled={saving || processingImage}>
+              <Upload size={15} /> {processingImage ? "Optimizing…" : "Upload photo"}
             </button>
-            <button type="button" onClick={handleReset} className="btn btn-ghost">
+            <button type="button" onClick={handleReset} className="btn btn-ghost" disabled={saving || processingImage}>
               <Wand2 size={15} /> Reset style
             </button>
           </div>
@@ -148,20 +205,35 @@ export default function ProfilePage() {
 
           <textarea
             value={bio}
-            onChange={(event) => setBio(event.target.value.slice(0, MAX_BIO))}
+            onChange={(event) => {
+              setBio(event.target.value.slice(0, MAX_BIO));
+              setHasUnsavedChanges(true);
+            }}
             rows={5}
             className="input resize-none"
             placeholder="I turn confusion into momentum by shipping tiny wins, testing ideas fast, and learning in public."
+            disabled={saving}
           />
 
           <div className="mt-4 flex items-center justify-between gap-3">
-            <p className="text-muted text-sm">Your bio and profile photo are saved to your account.</p>
-            <button type="button" onClick={handleSave} className="btn btn-mint" disabled={saving}>
-              <Check size={15} /> {saving ? "Saving" : "Save profile"}
+            <p className="text-muted text-sm" aria-live="polite">
+              {hasUnsavedChanges
+                ? "Photo preview only — save your profile to store it in your account."
+                : "Your bio and profile photo are saved to your account and will still be there after you log out."}
+            </p>
+            <button type="button" onClick={handleSave} className="btn btn-mint" disabled={saving || processingImage || !hasUnsavedChanges}>
+              <Check size={15} /> {saving ? "Saving" : processingImage ? "Optimizing photo" : "Save profile"}
             </button>
           </div>
 
-          <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            onChange={handleImageSelect}
+            className="hidden"
+            disabled={saving || processingImage}
+          />
         </motion.section>
 
         <motion.aside

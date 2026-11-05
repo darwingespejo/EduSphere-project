@@ -134,11 +134,18 @@ class Errors
 	 * @param string $template
 	 * @return void
 	 */
-	public function show_database_error($message, $sql = '', $bindings = [], $exception = null, $template = 'error_db')
+	public function show_database_error($message, $sql = '', $bindings = [], $exception = null, $template = 'error_db', $status_code = 500)
 	{
-		http_response_code(500);
+		http_response_code($status_code);
 		
 		if (config_item('environment') !== 'development') {
+			header('Content-Type: application/json; charset=utf-8');
+			echo json_encode([
+				'success' => false,
+				'message' => 'Database connection unavailable.',
+				'data' => null,
+				'errors' => ['database' => 'Check the server-side database configuration.'],
+			], JSON_UNESCAPED_SLASHES);
 			exit();
 		}
 

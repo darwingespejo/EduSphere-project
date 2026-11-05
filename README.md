@@ -2,59 +2,62 @@
 
 Adaptive learning and skills evaluation platform: placement-tested learning paths, a code playground with real test cases, anonymous peer review, XP/badges/certificates with public verification, and live-session links.
 
-The project is organized into `frontend/` for the Next.js application and `backend/` for the PHP/LavaLust API. The Next.js app includes its own API routes and MySQL/Drizzle data layer and remains the default. The PHP API is a partial port; the frontend can opt into it with `NEXT_PUBLIC_API_BASE_URL`, but keep the Next.js API routes until the remaining course and assignment flows have been ported and verified.
+The project is organized into `frontend/` for the standalone React/Vite browser app and `backend/` for the PHP/LavaLust API. The frontend calls the PHP API through Vite's local `/api` proxy.
 
-> A note on scope: payment (Stripe), email (SMTP), execution (Judge0), and storage (S3/R2) integrations are env-driven. Password registration requires working SMTP because users must verify their email before signing in. In-app notifications are also emailed to verified users. JavaScript runs in a local `vm` sandbox; uploads without storage credentials only register metadata.
+For the project concept, sitemap, interface wireframes, database ERD/field inventory, route overview, and checking readiness, see [SYSTEM-DESIGN.md](./SYSTEM-DESIGN.md).
+
+> Payment (PayMongo), email (SMTP), execution (Judge0), and storage (S3/R2) integrations are env-driven in the PHP backend. Course authoring/enrollment, course materials and final assessments, and coding-assignment authoring/submissions are served by the PHP API.
 
 ## Stack
 
-- Next.js 16 (App Router) + React 19 + TypeScript, Tailwind CSS 4
-- LavaLust 4.7.0 PHP MVC API in `backend/` (in-progress backend migration)
-- Aiven MySQL + Drizzle ORM (snake_case DDL, FKs, unique indexes)
-- `jose` JWT (15-min access + 30-day rotating refresh, hashed at rest)
-- `bcryptjs` password hashing, `zod` input validation on every mutating route
+- React 19 + Vite + React Router + TypeScript, Tailwind CSS 4
+- LavaLust 4.7.0 PHP MVC API in `backend/`
+- Aiven MySQL with prepared queries and schema managed in `backend/database/`
+- JWT access/refresh tokens
+- PHP password hashing and request validation
 - `@monaco-editor/react`, `framer-motion`, `lucide-react`, `canvas-confetti`, `zustand`
 
 ## Run it
 
-Set the Aiven values in `frontend/.env` (see `frontend/.env.example`). For a new, empty database, import `backend/database/schema.sql` and then run the TypeScript demo seed once. Do not import the schema or seed into the shared database again; it is already initialized.
+Set the database, JWT, and optional integration values in `backend/.env` (see `backend/.env.example`). For a new, empty database, import `backend/database/schema.sql` and then `backend/database/seed.sql`. Do not import the schema or seed into the shared database again; it is already initialized.
 
 ```bash
-cd frontend
+cd backend
+copy .env.example .env
+cd ..\frontend
 npm install
-npx tsx src/db/seed.ts           # only for a new, empty database
-npm run dev                      # or: npm run build && npm run start
+npm run dev                      # React at http://localhost:5173, PHP API at http://localhost:8080
 ```
 
-Do not run schema pushes or seeds against the shared Aiven database; schema pushes can alter tables and the seed is not intended for an existing database.
+The dev command starts Vite and PHP's built-in development server together. The Vite proxy forwards `/api/*` to `http://127.0.0.1:8080`. `npm run build` builds the static React app, and `npm run start` previews it. For production, deploy the static `frontend/dist/` files and the PHP service separately.
 
-For an existing database, apply the additive migration `backend/database/migrations/004_profile_email_verification.sql` before using profile persistence and password-email verification. It adds profile fields, preserves existing accounts as verified, and creates the one-time verification-code table. Do not run Drizzle schema push against the shared database.
+Do not import the schema or seed into the shared Aiven database; they are not intended for an existing database.
 
-Email configuration is split by application: set SMTP values in `frontend/.env.local` for Next.js verification and notification emails. If using the PHP API, configure `backend/.env`; that service uses `MAIL_FROM_ADDRESS` and `MAIL_FROM_NAME` instead of `MAIL_FROM`. The corresponding templates are `frontend/.env.example` and `backend/.env.example`. Keep both real env files private and out of source control.
+For an existing database, apply the additive migration `backend/database/migrations/004_profile_email_verification.sql` before using profile persistence and password-email verification. It adds profile fields, preserves existing accounts as verified, and creates the one-time verification-code table. Profile photos up to 10 MB are accepted, resized to at most 512 pixels, and compressed to WebP in the browser before storage in the user's `avatar` database field. After choosing a photo, click **Save profile** before logging out or leaving. Saved photos load again after signing in.
 
-`SMTP_SECURE` accepts `tls` for STARTTLS (commonly port 587), `ssl` for implicit TLS (commonly port 465), or `none` for an unencrypted SMTP connection; when omitted, TLS is selected for ports 465 and 587. SMTP authentication is optional, but configure both username and password together when required by your provider. New password accounts receive an 8-digit code, and cannot sign in until the code is confirmed. Google accounts rely on Google's verified-email claim. Profile bio/photo and notifications are stored in MySQL; every in-app notification for a verified account is also emailed.
+Configure email delivery in `backend/.env` with `RESEND_API_KEY` and a verified `MAIL_FROM` sender, or configure SMTP with `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_SECURE`. Resend is preferred when both providers are configured. All in-app notifications, including certificate awards, are emailed to the user's verified account address. Keep real environment files private and out of source control.
 
-To add the repeatable sample assignments and final assessments to the three existing sample courses, run `npm --prefix frontend run seed:sample-courses` from the project root. This targeted seed is idempotent and does not run the full demo seed. It also adds Python, C, C++, and C# practice exercises to the playground.
+`SMTP_SECURE` accepts `tls` for STARTTLS (commonly port 587), `ssl` for implicit TLS (commonly port 465), or `none` for an unencrypted SMTP connection; when omitted, TLS is selected for ports 465 and 587. SMTP authentication is optional, but configure both username and password together when required by your provider. Password registration requires a working email provider for verification; Google sign-in uses a verified Google email.
 
-### Coding classroom
+### Courses and coding classroom
 
-Instructors can author JavaScript assignments for their own courses at `/instructor/assignments`. Each assignment includes starter code, a problem prompt, optional due date, and JSON test cases; set `"hidden": true` to keep a case private. At least one visible case is required. Assignments can be saved as drafts or published, and the instructor view reports submissions, completion, and class-average score.
+Students can enroll in published courses, complete lessons, download course materials, take final assessments, and submit coding assignments. Instructors can create draft courses, add modules and lessons, upload materials, configure assessments, and author/publish assignments with visible and private tests. Course publication requires at least one lesson, one published assignment, and one final-assessment question.
 
-Students with a learning path in the assigned course find published work at `/assignments`. They can run code without submitting, submit multiple attempts, see their score history, and continue working after the due date; late submissions are marked. The server executes the tests and does not return private test inputs or expected outputs to the browser. Assignment authoring currently supports JavaScript. The playground includes JavaScript, Python, C, C++, C#, and HTML exercises. JavaScript uses the built-in local sandbox, HTML runs in a browser preview, and Python/C/C++/C# execution requires a private Judge0 instance configured with `JUDGE0_URL` (and `JUDGE0_API_KEY` if required by that instance). Judge0 language IDs are Python 71, C 50, C# 51, and C++ 54. Compiled-language exercises receive each test input on standard input and compare the final output line with the expected result.
+The playground includes JavaScript, Python, C, C++, C#, and HTML exercises. JavaScript free runs and visible exercise tests execute in an isolated browser frame without a runner account; these local results are practice-only, do not award XP or save scores, and do not include hidden tests. HTML runs in a browser preview. Python/C/C++/C# use the configured Judge0 service (`JUDGE0_URL`; `JUDGE0_API_KEY` only if required by that instance). Judge0 language IDs are Python 71, C 50, C# 51, and C++ 54. Python and compiled-language exercises receive each test input on standard input and compare the final output line with the expected result.
 
-The classroom adds two tables. For an existing database, review and apply the additive migration `backend/database/migrations/002_coding_classroom.sql` once with the MySQL client before opening these pages. It creates new tables only and does not alter or delete existing records. Do not run Drizzle schema push against the shared database.
+When a student completes a learning path, the certificate is emailed to the address on their account. The email includes the certificate details and a public verification link; use the **Email to me** action on the certificates page to resend it. Set `APP_URL` to the public frontend origin in deployed environments so emailed verification links resolve outside the local machine.
 
-The playground has a **Free run** mode that executes a program without an assignment or exercise ID. JavaScript runs in the local 4-second VM sandbox. Python, C, C++, and C# run through a private Judge0 instance; set `JUDGE0_URL` and, if required, `JUDGE0_API_KEY` in `frontend/.env.local` and restart the server. Do not use a public runner for student code. Free-run code and standard input are kept in that signed-in user's browser storage; use **Reset** to restore the language template.
+The classroom adds two tables. For an existing database, review and apply the additive migration `backend/database/migrations/002_coding_classroom.sql` once with the MySQL client before opening these pages. It creates new tables only and does not alter or delete existing records.
+
+For local practice, the public Judge0 CE endpoint can be configured in `backend/.env` with `JUDGE0_URL=https://ce.judge0.com`; it works without an API key but may have availability and rate limits. Submitted code and input are sent to this third-party service, so do not send secrets or sensitive code. If PHP cURL cannot verify its TLS certificate, set `JUDGE0_CA_BUNDLE` to a trusted CA bundle path. For production or student submissions, use a private Judge0 instance instead.
 
 ### Certified courses
 
-Students browse published courses at `/courses`, enroll, complete lessons, download module resources, submit coding assignments, and take the final assessment. Instructors create courses and modules at `/instructor/courses`, add lesson content and assessment questions, and upload PDF, PowerPoint, Word, Excel, CSV, text, image, and ZIP files (up to 25 MB). Publishing requires at least one lesson, one published coding assignment, and a final assessment with at least one question.
-
 A certificate is issued once per course only after the student completes every course lesson, passes every published coding assignment (100% on at least one attempt per assignment), and passes the final assessment (80% by default; the instructor can set 50–100%). Verification is available at `/verify/[code]`. Instructors can review the exact source saved with each coding-assignment attempt; the platform does not try to determine whether code was pasted or typed.
 
-For an existing database, review and apply `backend/database/migrations/003_course_certificates.sql` before using the course enrollment, material, and final-assessment features. It creates the new tables and adds a unique user/course certificate constraint; do not use Drizzle schema push against the shared database.
+For an existing database, review and apply `backend/database/migrations/003_course_certificates.sql` before using the course enrollment, material, and final-assessment features. It creates the new tables and adds a unique user/course certificate constraint.
 
-Course files are stored privately on the application host under `.data/course-materials`, outside the public web root. This local-disk storage is appropriate for a persistent single-host deployment; ephemeral/serverless instances may discard files or fail to share them across instances. Use a persistent volume or migrate storage to S3/R2 before deploying in those environments.
+Course files are stored privately on the application host under `backend/.data/course-materials`, outside the public web root. The local `npm run dev` command starts PHP with 25 MB upload and 26 MB request limits; other PHP hosts must set `upload_max_filesize=25M` and `post_max_size=26M`. This local-disk storage is appropriate for a persistent single-host deployment; ephemeral/serverless instances may discard files or fail to share them across instances. Use a persistent volume or migrate storage to S3/R2 before deploying in those environments.
 
 ### Demo accounts (seeded placeholder data)
 
@@ -72,16 +75,26 @@ Password for all: `password123`. Public credential demo: `/verify/EDU-7Q4M-92XT`
 |---|---|
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | Aiven MySQL connection (required) |
 | `DB_SSL_CA` | Path to the Aiven CA certificate; required in production to verify the server certificate |
-| `NEXT_PUBLIC_API_BASE_URL` | Optional base URL for the LavaLust API; leave blank to use Next.js routes until PHP endpoint parity is complete |
+| `VITE_API_BASE_URL` | Optional API origin for a separately deployed PHP API; leave blank to use the local Vite proxy |
+| `VITE_API_PROXY_TARGET` | Local PHP API origin used by Vite's `/api` proxy (default `http://127.0.0.1:8080`) |
 | `JWT_SECRET` | HS256 secret for access/refresh tokens |
-| `ALLOWED_ORIGINS` | Comma-separated CORS allow-list for `/api/*` |
-| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Live Stripe checkout + webhook verification |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM` | Transactional email over SMTP |
+| `GOOGLE_CLIENT_ID` | Google Identity Services audience checked by the PHP API |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Public Google client ID used by the frontend sign-in button |
+| `ALLOWED_ORIGINS` | Comma-separated CORS allow-list for `/api/*` (include `http://localhost:5173`) |
+| `APP_URL` | Frontend origin used for billing return URLs and email links |
+| `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET` | PayMongo hosted checkout and signed webhook; use test credentials locally |
+| `RESEND_API_KEY`, `MAIL_FROM` | Transactional email through Resend; `MAIL_FROM` must use a verified sender domain |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | SMTP fallback when Resend is not configured |
+| `CURL_CA_BUNDLE` | Optional trusted CA bundle for PHP cURL HTTPS requests |
+| `GEMINI_API_KEY` | Optional server-side Gemini key for study guidance on the learning-path page |
+| `GEMINI_MODEL` | Optional Gemini model (default `gemini-3.6-flash`) |
 | `JUDGE0_URL`, `JUDGE0_API_KEY` | Remote code execution instead of the local sandbox |
+
+The learning-path page offers opt-in Gemini study guidance. Add `GEMINI_API_KEY` to `backend/.env` and restart the PHP API to enable it. The API key remains on the backend; when a student asks for guidance, the course title, path rationale, progress count, and up to 12 upcoming lesson titles/statuses are sent to Gemini. Account details are not sent. Without a key, the existing learning-path features continue to work and the guidance action reports that Gemini is not configured.
 
 ### Google sign-in setup
 
-Google sign-in requires a Google Cloud OAuth 2.0 **Web application** client. Configure the OAuth consent screen, add `http://localhost:3000` under **Authorized JavaScript origins**, and add `http://localhost:3000/api/v1/auth/google` under **Authorized redirect URIs**. Set `NEXT_PUBLIC_APP_URL=http://localhost:3000` and add the client ID to both `NEXT_PUBLIC_GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_ID` in `frontend/.env.local`, then restart the dev server. Open the app as `http://localhost:3000` rather than `http://0.0.0.0:3000`. The app uses Google Identity Services redirect mode; the server validates Google’s CSRF token and signed ID token, audience, issuer, and verified Gmail address.
+Set the same Google OAuth web client ID as `GOOGLE_CLIENT_ID` in `backend/.env` and `NEXT_PUBLIC_GOOGLE_CLIENT_ID` in `frontend/.env.local`. Add the frontend origin (for local development, `http://localhost:5173`) to the OAuth client's authorized JavaScript origins. The API verifies the Google credential and creates or signs in a student account using its verified email.
 
 ## API shape
 
@@ -91,11 +104,11 @@ Every response is the same envelope:
 { "success": true, "message": "…", "data": { }, "errors": null }
 ```
 
-Groups: `auth` (register/login/refresh/logout/me), `assessments/placement` (+ submit), `learning-path` (current/generate/progress), `courses`, `lessons/[id]`, `exercises`, `coding-assignments` (author/manage/list/attempt history), `playground/run` (rate-limited 30/min), `submissions`, `peer-review/{queue,submit,feedback}`, `analytics/{student,instructor,leaderboard}`, `badges`, `certificates`, `verify/[code]` (public), `sessions`, `payments/{checkout,webhook}`, `uploads/presign`, `notifications`, `admin/users`. Health: `/api/health` and `/api/v1/health`.
+Groups: `auth` (register/login/Google sign-in/refresh/logout/me), `assessments/placement` (+ submit), `learning-path` (current/generate/progress), `courses` (catalog, detail, enrollment, authoring, modules, and final assessments), `course-progress`, `course-materials`, `lessons/[id]`, `coding-assignments` (student submissions and instructor authoring/review), `exercises`, `playground/run`, `submissions`, `peer-review/{queue,submit,feedback}`, `analytics/{student,instructor,leaderboard}`, `badges`, `certificates`, `verify/[code]` (public), `sessions`, `payments/{checkout,webhook}`, `uploads/presign`, `notifications`, and `admin/users`. Health: `/api/v1/health`.
 
-### LavaLust backend migration
+### PHP backend
 
-The PHP API is a partial port of `/api/v1/*`, integrated into a complete LavaLust 4.7.0 project under `backend/`. It currently covers authentication, lessons/catalog, placement and learning paths, playground/exercises, submissions/reviews, analytics, credentials, sessions, notifications, checkout, uploads, and admin users. Course authoring/enrollment/material downloads/final assessments and coding-assignment authoring/attempt endpoints are still handled by Next.js. Do not remove the Next.js API route files until those PHP endpoints have been migrated and verified. See [backend/README.md](./backend/README.md) for local container setup and the framework directory layout.
+The PHP API is a partial implementation of `/api/v1/*`, integrated into a complete LavaLust 4.7.0 project under `backend/`. It covers existing-account authentication, lessons/catalog, placement and learning paths, playground/exercises, submissions/reviews, analytics, credentials, sessions, notifications, checkout, uploads, and admin users. Course authoring/enrollment/material downloads/final assessments and coding-assignment authoring/attempts are not yet implemented. See [backend/README.md](./backend/README.md) for backend setup and framework details.
 
 ## Canonical test flows
 
@@ -103,7 +116,7 @@ The PHP API is a partial port of `/api/v1/*`, integrated into a complete LavaLus
 
 **2. Code submission → results.** In `/playground`, run Two Sum with the O(n) hash-map solution: 4/4 pass including the hidden 100,000-item case (about 20ms). Run the O(n²) double loop: it passes the visible cases, then the whole run times out at 4s with a hint about why. XP only pays above your previous best, so re-running can't farm it.
 
-**3. Assignment → anonymous peer review.** In the Orbit Loader exercise, submit for review — `assignReviewers` enqueues it to 3 least-loaded classmates, never you, never twice. As Aria, open `/review`: the queue shows `Author #2KF7N`-style aliases only. Score the rubric sliders (live total), write ≥20 chars, submit. The author gets a notification and sees you as `Reviewer #…` on `/feedback`. When all 3 land, the submission flips to `reviewed`.
+**3. Assignment → anonymous peer review.** The PHP API can submit assignments for review — `PeerAssigner` selects up to three least-loaded classmates. Reviewer queue and feedback expose aliases rather than account IDs.
 
 ## Design
 

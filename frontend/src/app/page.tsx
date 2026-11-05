@@ -1,11 +1,11 @@
 "use client";
-import Link from "next/link";
+import Link from "@/router/link";
 import { motion } from "framer-motion";
-import { ArrowRight, BadgeCheck, ChevronRight, Code2, Gauge, PenLine, ShieldCheck, Waypoints } from "lucide-react";
+import { ArrowRight, BadgeCheck, ChevronRight, Code2, Gauge, PenLine, Waypoints } from "lucide-react";
 import { Logo, OrbitMark } from "@/components/Logo";
 import { ToastHost } from "@/components/Toasts";
-import { Magnetic, Marquee, OrbitField, ParallaxY, TiltCard } from "@/components/FX";
-import { OrbitHero, PhotoCard, WaveDivider } from "@/components/LandingArt";
+import { Magnetic, Marquee, ParallaxY, TiltCard } from "@/components/FX";
+import { PhotoCard, WaveDivider } from "@/components/LandingArt";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 const fadeUp = {
@@ -32,64 +32,60 @@ export default function Landing() {
   return (
     <div className="relative overflow-x-clip">
       {/* nav */}
-      <header className="absolute top-0 inset-x-0 z-50">
-        <div className="max-w-[1160px] mx-auto px-5 md:px-8 h-[76px] flex items-center justify-between">
+      <header className="absolute top-3 inset-x-0 z-50 px-3">
+        <div className="max-w-[1160px] mx-auto px-4 md:px-7 h-[66px] flex items-center justify-between rounded-full border border-line bg-surface/85 backdrop-blur-xl shadow-[0_5px_20px_rgba(20,43,57,0.08)]">
           <Logo />
-          <nav className="hidden md:flex items-center gap-7 text-sm text-muted">
-            <a href="#how" className="hover:text-text transition-colors">How it works</a>
-            <a href="#features" className="hover:text-text transition-colors">Modules</a>
-            <a href="#pricing" className="hover:text-text transition-colors">Pricing</a>
-            <Link href="/verify" className="hover:text-text transition-colors">Verify a credential</Link>
+          <nav className="hidden md:flex items-center gap-7 text-sm font-semibold text-text">
+            <a href="#features" className="hover:text-coral transition-colors">Playground</a>
+            <a href="#how" className="hover:text-coral transition-colors">Your Path</a>
+            <a href="#pricing" className="hover:text-coral transition-colors">Progress</a>
+            <a href="#features" className="hover:text-coral transition-colors">Stories</a>
           </nav>
           <div className="flex items-center gap-2">
-            <Link href="/login" className="btn btn-ghost !py-2">Sign in</Link>
-            <Magnetic><Link href="/register" className="btn btn-primary !py-2">Create account</Link></Magnetic>
+            <Link href="/verify" className="hidden sm:block font-mono text-xs text-muted hover:text-text">/verify</Link>
+            <Magnetic><Link href="/register" className="btn btn-primary !py-2 !px-5">Start free</Link></Magnetic>
           </div>
         </div>
       </header>
 
-      {/* hero — living constellation field behind everything */}
-      <section className="relative pt-[150px] md:pt-[170px] pb-10 md:pb-14 min-h-[92vh] flex flex-col justify-center">
-        <OrbitField density={1} />
-        <div className="glow-blob w-[520px] h-[520px] -top-40 -left-40" style={{ background: "var(--glow-primary)" }} />
-        <div className="glow-blob w-[420px] h-[420px] top-32 right-[-120px]" style={{ background: "var(--glow-mint)" }} />
-        <div className="max-w-[1160px] mx-auto px-5 md:px-8 grid lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center relative">
-          <div>
-            <motion.p className="eyebrow flex items-center gap-2" {...fadeUp}>
-              <span className="w-1.5 h-1.5 rounded-full bg-mint inline-block" /> Adaptive learning + skills evaluation
+      <section className="relative isolate min-h-[82vh] overflow-hidden bg-[#102b3c] pt-[126px] md:pt-[140px] pb-16 md:pb-20 flex items-center text-white">
+        <img
+          src={IMG.classroom}
+          alt=""
+          aria-hidden="true"
+          fetchPriority="high"
+          className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
+        />
+        <div
+          className="absolute inset-0 -z-10"
+          style={{ background: "linear-gradient(90deg, rgba(10,29,39,.94) 0%, rgba(10,29,39,.84) 43%, rgba(10,29,39,.42) 100%), linear-gradient(0deg, rgba(10,29,39,.42), transparent 55%)" }}
+        />
+        <div className="max-w-[1160px] w-full mx-auto px-5 md:px-8 relative">
+          <div className="max-w-[700px]">
+            <motion.p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.16em] text-white/85 backdrop-blur-sm" {...fadeUp}>
+              <span className="w-2 h-2 rounded-full bg-[#63d2b4] inline-block" /> Adaptive learning · placement-tested paths
             </motion.p>
-            <h1 className="display font-extrabold tracking-tight mt-5 text-[clamp(38px,6vw,64px)] leading-[1.02]">
-              {"A skill map that redraws itself after "
-                .split(" ")
-                .map((w, i) => (
-                  <motion.span key={i} className="inline-block mr-[0.24em]"
-                    initial={{ opacity: 0, y: 24, rotate: 2 }} animate={{ opacity: 1, y: 0, rotate: 0 }}
-                    transition={{ delay: 0.15 + i * 0.05, duration: 0.55, ease }}>
-                    {w}
-                  </motion.span>
-                ))}
-              <motion.em className="font-accent not-italic underline decoration-mint/60 decoration-[3px] underline-offset-8"
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.65, duration: 0.6 }}>
-                every placement.
-              </motion.em>
+            <h1 className="display font-extrabold tracking-tight mt-6 text-[clamp(48px,7vw,76px)] leading-[0.98]">
+              <span className="block">Learning that</span>
+              <span className="block text-[#ff8065]">moves at your</span>
+              <span className="block text-[#ff8065]">own pace.</span>
             </h1>
-            <motion.p className="text-muted text-[17px] leading-relaxed mt-6 max-w-[520px]" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.5 }}>
-              Ten placement questions produce a per-skill gap report. EduSphere re-sequences your course so the weakest skills come first, then holds you to a pace measured in real lessons per day — no streak theatre without the work.
+            <motion.p className="text-white/80 text-[17px] leading-relaxed mt-7 max-w-[560px]" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.2 }}>
+              Start with a short skills check. Get a learning path built around what you need to practice, with hands-on coding, peer feedback, and certificates you can share.
             </motion.p>
-            <motion.div className="flex flex-wrap items-center gap-3 mt-9" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.6 }}>
-              <Magnetic><Link href="/register" className="btn btn-primary text-[15px] !px-6 !py-3.5">Start the free placement <ArrowRight size={16} /></Link></Magnetic>
-              <Magnetic strength={0.2}><Link href="/verify/EDU-7Q4M-92XT" className="btn btn-ghost text-[15px] !px-5 !py-3.5"><ShieldCheck size={16} /> See a live credential</Link></Magnetic>
+            <motion.div className="flex flex-wrap items-center gap-3 mt-9" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.3 }}>
+              <Magnetic><Link href="/register" className="btn btn-primary text-[15px] !px-7 !py-3.5">Find your learning path <ArrowRight size={16} /></Link></Magnetic>
+              <Magnetic strength={0.2}><Link href="/playground" className="text-[15px] font-semibold text-white hover:text-[#ffb19f] transition-colors px-2 py-3.5">Explore the playground <ArrowRight size={16} className="inline ml-1" /></Link></Magnetic>
             </motion.div>
-            <motion.div className="mt-8 font-mono text-[11px] text-muted flex flex-wrap gap-x-5 gap-y-1.5" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.7 }}>
-              <span>10-question placement</span>
-              <span>Rule-based path engine</span>
-              <span>3 reviewers per submission</span>
-              <span>0 real payments</span>
+            <motion.div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-white/75" {...fadeUp} transition={{ ...fadeUp.transition, delay: 0.4 }}>
+              <span><strong className="text-white">10 questions</strong> to get started</span>
+              <span><strong className="text-white">About 4 minutes</strong> to find your gaps</span>
+              <span><strong className="text-white">Free</strong> for students</span>
             </motion.div>
           </div>
-          <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.9, delay: 0.25, ease }} className="hidden md:block">
-            <OrbitHero />
-          </motion.div>
+        </div>
+        <div className="absolute bottom-4 right-5 z-10 hidden text-[10px] text-white/55 md:block">
+          Photo: {IMG.classroomCredit}
         </div>
       </section>
 
@@ -180,13 +176,13 @@ export default function Landing() {
         <motion.div {...fadeUp} className="text-center">
           <p className="eyebrow">Pricing</p>
           <h2 className="display font-extrabold tracking-tight text-[clamp(26px,3.6vw,40px)] mt-3">Free while you place. Pro when you compete.</h2>
-          <p className="text-muted mt-3 max-w-xl mx-auto text-[15px]">Payments run through Stripe in test mode. In this demo deployment no keys are configured, so checkout completes as a recorded test payment.</p>
+          <p className="text-muted mt-3 max-w-xl mx-auto text-[15px]">Pay securely through PayMongo with GCash, Maya, or card. Paid plans are one-time purchases for 30 days and do not auto-renew.</p>
         </motion.div>
         <div className="grid md:grid-cols-3 gap-4 mt-12">
           {[
             { name: "Free", price: "$0", per: "forever", items: ["Placement + adaptive path", "Playground with visible tests", "Public leaderboard"], cta: "Create account", href: "/register", primary: false },
-            { name: "Pro", price: "$12", per: "per month", items: ["Everything in Free", "Hidden tests revealed after pass", "Certificate codes for every course", "Priority peer-review matching"], cta: "Try Pro checkout", href: "/billing", primary: true },
-            { name: "Team", price: "$8", per: "per seat / month", items: ["Everything in Pro", "Instructor dashboards", "Cohort leaderboards", "Live session scheduling"], cta: "Try Team checkout", href: "/billing", primary: false },
+            { name: "Pro", price: "₱699", per: "per 30 days", items: ["Everything in Free", "Hidden tests revealed after pass", "Certificate codes for every course", "Priority peer-review matching"], cta: "Try Pro checkout", href: "/billing", primary: true },
+            { name: "Team", price: "₱469", per: "per seat · 30 days · 3-seat minimum", items: ["Everything in Pro", "Instructor dashboards", "Cohort leaderboards", "Live session scheduling"], cta: "Try Team checkout", href: "/billing", primary: false },
           ].map((p, i) => (
             <motion.div key={p.name} {...fadeUp} transition={{ ...fadeUp.transition, delay: i * 0.1 }}>
               <TiltCard max={5} className={`card p-7 flex flex-col h-full ${p.primary ? "border-primary/50 !bg-raised relative overflow-hidden" : ""}`}>
@@ -226,7 +222,7 @@ export default function Landing() {
       <footer className="border-t border-line">
         <div className="max-w-[1160px] mx-auto px-5 md:px-8 py-8 flex flex-wrap items-center justify-between gap-4">
           <OrbitMark size={22} />
-          <p className="text-muted text-xs font-mono">EduSphere demo build. Seed data is fictional; payments are Stripe test mode.</p>
+          <p className="text-muted text-xs font-mono">EduSphere demo build. Seed data is fictional; payments are processed by PayMongo.</p>
           <div className="flex gap-5 text-xs text-muted">
             <Link href="/verify" className="hover:text-text">Verify</Link>
             <Link href="/login" className="hover:text-text">Sign in</Link>

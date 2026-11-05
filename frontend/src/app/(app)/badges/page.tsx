@@ -1,10 +1,13 @@
 "use client";
-import Link from "next/link";
+import Link from "@/router/link";
+import { useState } from "react";
 import { motion } from "framer-motion";
-import { BadgeCheck, ExternalLink } from "lucide-react";
+import { BadgeCheck, ExternalLink, Mail } from "lucide-react";
 import { SphereLoader } from "@/components/Logo";
 import { BadgeIcon } from "@/components/BadgeModal";
 import { PageHeader, SectionTitle, EmptyState } from "@/components/ui";
+import { toast } from "@/components/Toasts";
+import { api } from "@/lib/api";
 import { fmtDate, useApi } from "@/lib/hooks";
 
 type Badges = {
@@ -16,6 +19,16 @@ type Cert = { code: string; issuedAt: string; course: string };
 export default function BadgesPage() {
   const badges = useApi<Badges>("/api/v1/badges");
   const certs = useApi<Cert[]>("/api/v1/certificates");
+  const [sendingCode, setSendingCode] = useState<string | null>(null);
+
+  const emailCertificate = async (code: string) => {
+    if (sendingCode) return;
+    setSendingCode(code);
+    const result = await api.post<{ sent: boolean }>(`/api/v1/certificates/${encodeURIComponent(code)}/email`);
+    setSendingCode(null);
+    if (result.success) toast.ok("Certificate sent to your registered email address.");
+    else toast.err(result.message);
+  };
 
   if (badges.loading || certs.loading) return <SphereLoader label="Loading credentials" />;
   const b = badges.data;
@@ -39,11 +52,21 @@ export default function BadgesPage() {
                 <p className="eyebrow">Certificate of completion</p>
                 <h3 className="display font-bold text-xl mt-2 font-accent italic">{c.course}</h3>
                 <p className="font-mono text-xs text-muted mt-2">issued {fmtDate(c.issuedAt)}</p>
-                <div className="flex items-center justify-between mt-5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-5">
                   <span className="font-mono text-[13px] tracking-widest text-mint">{c.code}</span>
-                  <Link href={`/verify/${c.code}`} className="btn btn-ghost !py-1.5 !px-3 text-[13px]" target="_blank">
-                    Verify link <ExternalLink size={12} />
-                  </Link>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void emailCertificate(c.code)}
+                      disabled={sendingCode !== null}
+                      className="btn btn-ghost !py-1.5 !px-3 text-[13px]"
+                    >
+                      <Mail size={12} /> {sendingCode === c.code ? "Sending…" : "Email to me"}
+                    </button>
+                    <Link href={`/verify/${c.code}`} className="btn btn-ghost !py-1.5 !px-3 text-[13px]" target="_blank">
+                      Verify link <ExternalLink size={12} />
+                    </Link>
+                  </div>
                 </div>
               </motion.div>
             ))}
@@ -52,7 +75,7 @@ export default function BadgesPage() {
       </div>
 
       <div>
-        <SectionTitle title={`Badges earned — ${b.earned.length}/8`} />
+        <SectionTitle title={`Badges earned â€” ${b.earned.length}/8`} />
         {b.earned.length === 0 ? (
           <p className="text-muted text-sm">Nothing earned yet. Complete a lesson, pass an exercise&apos;s hidden tests, or hold a streak to start.</p>
         ) : (
@@ -62,7 +85,7 @@ export default function BadgesPage() {
                 <BadgeIcon badge={bd} size={44} />
                 <h4 className="font-semibold text-sm mt-3">{bd.name}</h4>
                 <p className="text-muted text-xs mt-1 leading-relaxed">{bd.description}</p>
-                <p className="font-mono text-[10px] text-muted mt-3">{fmtDate(bd.awardedAt)}{bd.xpReward > 0 ? ` · +${bd.xpReward} XP` : ""}</p>
+                <p className="font-mono text-[10px] text-muted mt-3">{fmtDate(bd.awardedAt)}{bd.xpReward > 0 ? ` Â· +${bd.xpReward} XP` : ""}</p>
               </motion.div>
             ))}
           </div>

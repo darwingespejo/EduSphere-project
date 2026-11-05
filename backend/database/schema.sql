@@ -7,7 +7,8 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS audit_logs, notifications, files, live_sessions, payouts, payments, subscriptions,
   certificates, user_badges, badges, streaks, progress_records, review_scores, peer_reviews,
   peer_assignments, rubric_criteria, rubrics, execution_results, submissions, test_cases,
-  coding_exercises, learning_path_items, learning_paths, student_skill_scores, attempt_answers,
+  coding_exercises, module_quiz_attempt_answers, module_quiz_attempts, module_quiz_questions,
+  module_quizzes, learning_path_items, learning_paths, student_skill_scores, attempt_answers,
   assessment_attempts, assessment_questions, assessments, lesson_skills, course_skills, skills,
   lessons, modules, courses, refresh_tokens, users, institutions;
 SET FOREIGN_KEY_CHECKS = 1;
@@ -59,6 +60,38 @@ CREATE TABLE modules (
   id CHAR(36) PRIMARY KEY, course_id CHAR(36) NOT NULL,
   title VARCHAR(160) NOT NULL, position INT NOT NULL DEFAULT 0,
   FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE module_quizzes (
+  id CHAR(36) PRIMARY KEY, module_id CHAR(36) NOT NULL,
+  title VARCHAR(160) NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_module_quizzes_module (module_id),
+  FOREIGN KEY (module_id) REFERENCES modules(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE module_quiz_questions (
+  id CHAR(36) PRIMARY KEY, quiz_id CHAR(36) NOT NULL,
+  type ENUM('multiple_choice','identification') NOT NULL,
+  prompt TEXT NOT NULL, options JSON NULL, correct_option TINYINT NULL,
+  accepted_answers JSON NULL, points INT NOT NULL DEFAULT 1, position INT NOT NULL DEFAULT 0,
+  KEY idx_module_quiz_questions_quiz (quiz_id),
+  FOREIGN KEY (quiz_id) REFERENCES module_quizzes(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE module_quiz_attempts (
+  id CHAR(36) PRIMARY KEY, quiz_id CHAR(36) NOT NULL, user_id CHAR(36) NOT NULL,
+  score DECIMAL(5,2) NOT NULL, earned_points INT NOT NULL, possible_points INT NOT NULL,
+  submitted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_module_quiz_attempts_user (quiz_id, user_id),
+  FOREIGN KEY (quiz_id) REFERENCES module_quizzes(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE module_quiz_attempt_answers (
+  id CHAR(36) PRIMARY KEY, attempt_id CHAR(36) NOT NULL, question_id CHAR(36) NOT NULL,
+  response TEXT NOT NULL, is_correct TINYINT(1) NOT NULL DEFAULT 0, points_awarded INT NOT NULL DEFAULT 0,
+  FOREIGN KEY (attempt_id) REFERENCES module_quiz_attempts(id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id) REFERENCES module_quiz_questions(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE lessons (
@@ -293,15 +326,19 @@ CREATE TABLE certificates (
 CREATE TABLE subscriptions (
   id CHAR(36) PRIMARY KEY, user_id CHAR(36) NOT NULL,
   plan VARCHAR(20) NOT NULL, status VARCHAR(20) NOT NULL DEFAULT 'active',
-  stripe_customer_id VARCHAR(80) NULL, stripe_sub_id VARCHAR(80) NULL,
+  provider_reference VARCHAR(120) NULL, expires_at DATETIME NULL,
+  UNIQUE KEY subscriptions_provider_reference_uq (provider_reference),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE payments (
   id CHAR(36) PRIMARY KEY, user_id CHAR(36) NOT NULL,
-  amount_cents INT NOT NULL, currency VARCHAR(8) NOT NULL DEFAULT 'usd',
-  status VARCHAR(20) NOT NULL DEFAULT 'demo', stripe_session_id VARCHAR(80) NULL,
+  amount_cents INT NOT NULL, currency VARCHAR(8) NOT NULL DEFAULT 'PHP',
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  provider VARCHAR(20) NOT NULL DEFAULT 'paymongo',
+  provider_reference VARCHAR(120) NULL, plan VARCHAR(20) NULL,
+  UNIQUE KEY payments_provider_reference_uq (provider_reference),
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;

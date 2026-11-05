@@ -44,7 +44,11 @@ class Path_model extends Model
 
     public function createPath($pathId, $userId, $courseId)
     {
-        $this->db->raw("INSERT INTO learning_paths (id, user_id, course_id, status, generated_at) VALUES (?, ?, ?, 'active', NOW())", [$pathId, $userId, $courseId]);
+        $this->db->raw(
+            "INSERT INTO learning_paths (id, user_id, course_id, status, rationale, generated_at)
+             VALUES (?, ?, ?, 'active', ?, NOW())",
+            [$pathId, $userId, $courseId, 'Your personalized learning path is being prepared.']
+        );
     }
 
     public function clearOpenItems($pathId)
@@ -113,13 +117,44 @@ class Path_model extends Model
     public function lessonsWithSkills($courseId)
     {
         return $this->db->raw(
-            'SELECT l.id lid, l.title, l.position, m.position mod_pos, ls.skill_id, s.name skill_name
+            'SELECT l.id lesson_id, l.title, l.position lesson_position,
+                    m.position module_position, ls.skill_id, s.name skill_name
              FROM lessons l JOIN modules m ON m.id = l.module_id
              LEFT JOIN lesson_skills ls ON ls.lesson_id = l.id
              LEFT JOIN skills s ON s.id = ls.skill_id
              WHERE m.course_id = ? ORDER BY m.position, l.position',
             [$courseId]
         )->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function issueCertificate($userId, $courseId): string
+    {
+        $existing = $this->certificateForCourse($userId, $courseId);
+        if ($existing) return $existing;
+        $code = 'EDU-' . strtoupper(bin2hex(random_bytes(2))) . '-' . strtoupper(bin2hex(random_bytes(2)));
+        try {
+            $this->db->raw(
+                'INSERT INTO certificates (id, user_id, course_id, code, issued_at)
+                 VALUES (?, ?, ?, ?, NOW())',
+                [uuid4(), $userId, $courseId, $code]
+            );
+        } catch (PDOException $error) {
+            if ($error->getCode() !== '23000') throw $error;
+            $existing = $this->certificateForCourse($userId, $courseId);
+            if ($existing) return $existing;
+            throw $error;
+        }
+
+        return $code;
+    }
+
+    public function certificateForCourse($userId, $courseId): ?string
+    {
+        $row = $this->db->raw(
+            'SELECT code FROM certificates WHERE user_id = ? AND course_id = ? LIMIT 1',
+            [$userId, $courseId]
+        )->fetch(PDO::FETCH_ASSOC);
+        return $row['code'] ?? null;
     }
 
     public function latestMastery($userId)

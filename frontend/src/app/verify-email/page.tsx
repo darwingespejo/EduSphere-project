@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import Link from "@/router/link";
+import { useRouter } from "@/router/navigation";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/Logo";
 import { toast, ToastHost } from "@/components/Toasts";

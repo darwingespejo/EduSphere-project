@@ -3,7 +3,7 @@ import { useAuth } from "./store";
 
 type Envelope<T> = { success: boolean; message: string; data: T; errors: Record<string, string> | null };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/+$/, "") ?? "";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
 
 function apiUrl(path: string): string {
   return API_BASE_URL ? `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}` : path;
@@ -41,7 +41,7 @@ function refreshOnce(): Promise<boolean> {
   return refreshInFlight;
 }
 
-async function request<T>(path: string, init: RequestInit, retried: boolean): Promise<Envelope<T>> {
+async function request<T>(path: string, init: RequestInit, retried: boolean, serverRetried = false): Promise<Envelope<T>> {
   const { access } = useAuth.getState();
   const headers = new Headers(init.headers);
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -59,6 +59,11 @@ async function request<T>(path: string, init: RequestInit, retried: boolean): Pr
       ...init,
       headers,
     });
+
+    if (res.status >= 500 && init.method === "GET" && !serverRetried) {
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      return request(path, init, retried, true);
+    }
 
     if (res.status === 401 && !retried) {
       if (await refreshOnce()) return request(path, init, true);
@@ -104,7 +109,9 @@ export const api = {
       try {
         const result = await res.json() as Partial<Envelope<never>>;
         if (result.message) message = result.message;
-      } catch {}
+      } catch {
+        message = `Download failed (${res.status}) with an invalid response.`;
+      }
       throw new Error(message);
     }
 
