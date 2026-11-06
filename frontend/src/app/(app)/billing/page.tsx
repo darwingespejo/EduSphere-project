@@ -179,7 +179,7 @@ function BillingInner() {
       </div>
 
       <p className="text-xs text-muted mb-4 max-w-2xl">
-        PayMongo processes checkout; plans activate only after a verified paid webhook. Plan-specific learning features are not yet enforced.
+        PayMongo processes checkout; plans activate only after a verified paid webhook. Active Pro and Team plans unlock Gemini study chat and Pico on your learning path.
       </p>
 
       <div className="grid md:grid-cols-2 gap-4 max-w-2xl">

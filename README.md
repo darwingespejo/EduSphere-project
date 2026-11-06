@@ -8,6 +8,8 @@ For the project concept, sitemap, interface wireframes, database ERD/field inven
 
 > Payment (PayMongo), email (SMTP), execution (Judge0), and storage (S3/R2) integrations are env-driven in the PHP backend. Course authoring/enrollment, course materials and final assessments, and coding-assignment authoring/submissions are served by the PHP API.
 
+Pico, the 3D Gemini learning companion, is available on the learning-path page to students with an active Pro or Team subscription. The PHP API checks the paid subscription and active path on every chat request. Configure `GEMINI_API_KEY` in `backend/.env`; the key stays on the server. Pico’s camera and robot commands also work without the chat API.
+
 ## Stack
 
 - React 19 + Vite + React Router + TypeScript, Tailwind CSS 4
@@ -86,11 +88,11 @@ Password for all: `password123`. Public credential demo: `/verify/EDU-7Q4M-92XT`
 | `RESEND_API_KEY`, `MAIL_FROM` | Transactional email through Resend; `MAIL_FROM` must use a verified sender domain |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_SECURE`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | SMTP fallback when Resend is not configured |
 | `CURL_CA_BUNDLE` | Optional trusted CA bundle for PHP cURL HTTPS requests |
-| `GEMINI_API_KEY` | Optional server-side Gemini key for the learning-path study assistant |
+| `GEMINI_API_KEY` | Server-side Gemini key for the learning-path assistant and Pico chat |
 | `GEMINI_MODEL` | Optional Gemini model (default `gemini-3.6-flash`) |
 | `JUDGE0_URL`, `JUDGE0_API_KEY` | Remote code execution instead of the local sandbox |
 
-The learning-path page offers a Gemini chat assistant only to accounts with an active Pro or Team subscription. This is checked by the PHP API against the verified subscription record, including its expiry, as well as by the UI. Add `GEMINI_API_KEY` to `backend/.env` and restart the PHP API to enable Gemini. The API key remains on the backend. A chat request includes the course title, path progress, up to 8 upcoming lesson contents, up to 20 database quiz questions/options, and a short recent chat history; it excludes account details and quiz answer keys. Gemini is instructed not to invent quiz questions or course facts.
+The learning-path page offers Gemini study chat, including Pico, only to accounts with an active Pro or Team subscription. This is checked by the PHP API against the verified subscription record, including its expiry, and by the UI; Pico also requires an active learning path. Add `GEMINI_API_KEY` to `backend/.env` and restart the PHP API to enable chat. The API key remains on the backend. Assistant requests use the course title, path progress, up to 8 upcoming lesson contents, up to 20 database quiz questions/options, and a short recent chat history; they exclude account details and quiz answer keys. Gemini is instructed not to invent quiz questions or course facts.
 
 ### Google sign-in setup
 

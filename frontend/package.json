@@ -17,6 +17,7 @@
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "react-router-dom": "^7.18.4",
+    "three": "0.147.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {

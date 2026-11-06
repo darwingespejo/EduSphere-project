@@ -1,0 +1,61 @@
+.pico-path-assistant {
+  height: 650px;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(98, 222, 255, 0.28);
+  border-radius: 22px;
+  background: #06121c;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2), 0 0 24px rgba(31, 205, 255, 0.08);
+}
+
+.pico-path-assistant > .pico {
+  height: 100%;
+  min-height: 0;
+  border-radius: 21px;
+}
+
+.pico-path-assistant .pico-ui .pico-dock {
+  width: 100%;
+  margin: 0;
+  justify-self: stretch;
+}
+
+.pico-path-assistant .pico-bubble {
+  display: none;
+}
+
+.pico-path-assistant .pico-chat:not(.pico-chat-panel-form) {
+  display: none;
+}
+
+.pico-path-assistant .pico-chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+
+.pico-path-assistant .pico-chips .pico-btn {
+  min-height: 32px;
+  padding-inline: 9px;
+  font-size: 10px;
+}
+
+.pico-widget-loading {
+  display: grid;
+  height: 100%;
+  min-height: inherit;
+  place-items: center;
+  color: #9ab2c0;
+  font: 13px system-ui, sans-serif;
+}
+
+@media (max-width: 760px) {
+  .pico-path-assistant {
+    height: 780px;
+  }
+}
+
+@media (max-width: 480px) {
+  .pico-path-assistant {
+    height: 760px;
+  }
+}

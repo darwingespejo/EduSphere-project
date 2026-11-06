@@ -1,0 +1,524 @@
+/*
+  Pico UI. Everything is scoped under .pico so it will not touch the rest of your app.
+  Layout: full-bleed turntable stage; the UI floats as glass strips around it.
+  Left rail = camera angles, top bar = brand and tools, bottom = chat dock.
+  Fonts are optional: add Unbounded, Figtree and IBM Plex Mono to your index.html for the
+  intended look (see README). The stacks below fall back to system fonts.
+*/
+.pico {
+  --ink: #04090e;
+  --panel: rgba(8, 16, 24, 0.72);
+  --line: rgba(150, 225, 255, 0.16);
+  --fg: #e7f5fa;
+  --mut: #8aa3ae;
+  --glow: #35e6ff;
+  --glow-soft: rgba(53, 230, 255, 0.2);
+  --f-display: 'Unbounded', 'Trebuchet MS', system-ui, sans-serif;
+  --f-body: 'Figtree', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --f-mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--fg);
+  color-scheme: dark;
+  font: 15px/1.45 var(--f-body);
+  -webkit-tap-highlight-color: transparent;
+  container: pico / inline-size;
+  isolation: isolate;
+}
+.pico *,
+.pico *::before,
+.pico *::after {
+  box-sizing: border-box;
+}
+.pico button,
+.pico input {
+  font: inherit;
+  color: inherit;
+}
+
+/* 3D canvas (created by the component) */
+.pico-stage {
+  position: absolute;
+  inset: 0;
+}
+.pico-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  outline: none;
+  cursor: grab;
+}
+.pico-stage canvas:active {
+  cursor: grabbing;
+}
+.pico-stage canvas:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: -3px;
+}
+
+/* UI overlay */
+.pico-ui {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 12px 16px;
+  pointer-events: none;
+}
+.pico-ui button,
+.pico-ui input,
+.pico-ui form,
+.pico-rail,
+.pico-card,
+.pico-swatches,
+.pico-brand {
+  pointer-events: auto;
+}
+
+/* top bar */
+.pico-bar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px 16px;
+}
+.pico-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pico-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pico-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  background: #0b141b;
+  border: 1px solid var(--line);
+  position: relative;
+  box-shadow: 0 0 18px var(--glow-soft);
+}
+.pico-mark::before,
+.pico-mark::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  width: 5px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--glow);
+  box-shadow: 0 0 8px var(--glow);
+}
+.pico-mark::before {
+  left: 6px;
+}
+.pico-mark::after {
+  right: 6px;
+}
+.pico-name {
+  font: 700 17px/1 var(--f-display);
+  letter-spacing: 0.08em;
+}
+.pico-tag {
+  font: 500 11px/1 var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--mut);
+}
+.pico-readout {
+  font: 400 12px/1.2 var(--f-mono);
+  letter-spacing: 0.06em;
+  color: var(--glow);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 12px var(--glow-soft);
+  white-space: pre;
+}
+.pico-hint {
+  font: 400 12px/1.3 var(--f-mono);
+  color: var(--mut);
+  transition: opacity 0.8s;
+  max-width: 34ch;
+}
+.pico-hint.gone {
+  opacity: 0;
+}
+
+/* tools */
+.pico-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.pico-btn {
+  font: 500 11.5px/1 var(--f-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.pico-btn:hover {
+  border-color: rgba(150, 225, 255, 0.4);
+}
+.pico-btn:active {
+  transform: translateY(1px);
+}
+.pico-btn[aria-pressed='true'] {
+  border-color: var(--glow);
+  box-shadow: inset 0 0 0 1px var(--glow), 0 0 18px var(--glow-soft);
+}
+.pico-btn:focus-visible,
+.pico-chat input:focus-visible,
+.pico-sw:focus-visible,
+.pico-view:focus-visible {
+  outline: 2px solid var(--glow);
+  outline-offset: 2px;
+}
+.pico-swatches {
+  display: flex;
+  gap: 6px;
+  padding: 7px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.pico-sw {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  background: var(--c);
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 55%, transparent);
+}
+.pico-sw[aria-pressed='true'] {
+  border-color: #fff;
+}
+
+/* camera angle rail */
+.pico-mid {
+  position: relative;
+  min-height: 0;
+}
+.pico-rail {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.pico-rail::-webkit-scrollbar {
+  display: none;
+}
+.pico-rail-cap {
+  font: 500 10px/1 var(--f-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mut);
+  padding: 2px 6px 4px;
+}
+.pico-view {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  min-width: 116px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.pico-view b {
+  font: 600 13px/1 var(--f-body);
+}
+.pico-view i {
+  font: 400 11px/1 var(--f-mono);
+  font-style: normal;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.pico-view:hover {
+  background: rgba(150, 225, 255, 0.07);
+}
+.pico-view.on {
+  border-color: var(--glow);
+  background: var(--glow-soft);
+}
+.pico-view.on i {
+  color: var(--glow);
+}
+
+/* dock: speech bubble, input, chips */
+.pico-dock {
+  position: relative;
+  width: min(680px, 100%);
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.pico-bubble {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 10px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.pico-bubble[hidden] {
+  display: none;
+}
+.pico-card {
+  max-width: min(560px, 100%);
+  padding: 11px 15px 12px;
+  border-radius: 18px 18px 18px 6px;
+  border: 1px solid var(--glow);
+  background: rgba(6, 14, 20, 0.86);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 28px var(--glow-soft);
+  max-height: 34vh;
+  overflow: auto;
+}
+.pico-who {
+  display: block;
+  font: 500 10px/1 var(--f-mono);
+  letter-spacing: 0.16em;
+  color: var(--glow);
+  margin-bottom: 6px;
+}
+.pico-card p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+.pico-dots {
+  display: inline-flex;
+  gap: 5px;
+  height: 14px;
+  align-items: center;
+}
+.pico-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--glow);
+  animation: pico-dot 1s infinite ease-in-out;
+}
+.pico-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.pico-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes pico-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+.pico-chat {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+.pico-chat input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  margin: 0;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  font-size: 15px;
+}
+.pico-chat input::placeholder {
+  color: var(--mut);
+}
+.pico-chat input:focus {
+  border-color: var(--glow);
+}
+.pico-send {
+  height: 46px;
+  min-width: 46px;
+  margin: 0;
+  padding: 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--glow);
+  background: var(--glow);
+  color: #02181e;
+  font: 600 13px/1 var(--f-body);
+  cursor: pointer;
+}
+.pico-send:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+.pico-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.pico-chips::-webkit-scrollbar {
+  display: none;
+}
+.pico-chips .pico-btn {
+  flex: none;
+}
+
+/* loading and failure overlay */
+.pico-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--ink);
+  font: 500 12px var(--f-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--mut);
+  text-align: center;
+  z-index: 5;
+  transition: opacity 0.6s;
+}
+.pico-loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+.pico-pulse {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 3px solid var(--glow);
+  box-shadow: 0 0 30px var(--glow-soft);
+  margin: 0 auto 16px;
+  animation: pico-pulse 1.2s infinite ease-in-out;
+}
+@keyframes pico-pulse {
+  0%,
+  100% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
+}
+.pico-fail {
+  max-width: 34ch;
+  padding: 0 16px;
+  line-height: 1.5;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--f-body);
+  font-size: 15px;
+  color: var(--fg);
+}
+
+/* narrow containers: angle rail becomes a strip, readout and hint are hidden */
+@container pico (max-width: 760px) {
+  .pico-rail {
+    position: static;
+    transform: none;
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    padding: 6px;
+    border-radius: 999px;
+    align-self: start;
+    width: max-content;
+  }
+  .pico-rail-cap {
+    display: none;
+  }
+  .pico-view {
+    flex: none;
+    min-width: 0;
+    gap: 7px;
+    padding: 8px 11px;
+    border-radius: 999px;
+  }
+  .pico-readout,
+  .pico-hint {
+    display: none;
+  }
+  .pico-tools {
+    justify-content: flex-start;
+  }
+}
+@container pico (max-width: 420px) {
+  .pico-btn {
+    padding: 0 10px;
+  }
+  .pico-name {
+    font-size: 15px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pico-dots span,
+  .pico-pulse {
+    animation: none;
+  }
+}

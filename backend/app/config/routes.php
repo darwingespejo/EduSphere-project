@@ -7,6 +7,7 @@ defined('PREVENT_DIRECT_ACCESS') OR exit('No direct script access allowed');
 // ---- infra ----
 $router->get('/',                              'AuthController::index');
 $router->get('/api/v1/health',                 'AuthController::health');
+$router->post('/api/pico/chat',                'PicoChat::send');
 
 // ---- auth ----
 $router->post('/api/v1/auth/register',         'AuthController::register');

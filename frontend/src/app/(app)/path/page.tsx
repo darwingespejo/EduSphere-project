@@ -1,13 +1,14 @@
 "use client";
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "@/router/link";
 import { motion } from "framer-motion";
-import { Check, Gauge, Lock, Play, RefreshCw, Send, Sparkles } from "lucide-react";
+import { Check, Gauge, Lock, Play, RefreshCw, Sparkles } from "lucide-react";
 import { useRouter } from "@/router/navigation";
 import { SphereLoader } from "@/components/Logo";
 import { Constellation, type PathNode } from "@/components/Constellation";
 import { PageHeader, SectionTitle, EmptyState } from "@/components/ui";
 import { BadgeModal, type EarnedBadge } from "@/components/BadgeModal";
+import PicoWidget from "@/components/PicoWidget";
 import { toast } from "@/components/Toasts";
 import { useApi } from "@/lib/hooks";
 import { api } from "@/lib/api";
@@ -30,57 +31,6 @@ type PracticeQuestion = {
   options: string[];
 };
 
-type ChatMessage = { role: "user" | "assistant"; text: string };
-
-function formatAdviceLine(line: string): ReactNode[] {
-  const parts: ReactNode[] = [];
-  const markdown = /\*\*(.+?)\*\*|__(.+?)__/g;
-  let start = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = markdown.exec(line)) !== null) {
-    if (match.index > start) parts.push(line.slice(start, match.index));
-    parts.push(<strong key={`${match.index}-bold`} className="text-text">{match[1] ?? match[2]}</strong>);
-    start = markdown.lastIndex;
-  }
-
-  if (start < line.length) parts.push(line.slice(start));
-  return parts;
-}
-
-function renderAdvice(text: string) {
-  return text.trim().split(/\n{2,}/).filter(Boolean).map((block, index) => {
-    const lines = block.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const cleanLines = lines.map((line) => line.replace(/^#{1,3}\s+/, "").replace(/^\*\*(.+)\*\*:?\s*$/, "$1"));
-    const listItems = cleanLines
-      .map((line) => line.match(/^(?:[-*]\s+|\d+[.)]\s+)(.+)$/)?.[1])
-      .filter((item): item is string => Boolean(item));
-
-    if (cleanLines.length && listItems.length === cleanLines.length) {
-      return (
-        <ol key={index} className="list-decimal pl-5 space-y-1.5">
-          {listItems.map((item, itemIndex) => <li key={itemIndex}>{formatAdviceLine(item)}</li>)}
-        </ol>
-      );
-    }
-
-    if (cleanLines.length === 1 && /^(Your next steps|Suggested pace)$/i.test(cleanLines[0].replace(/:$/, ""))) {
-      return <h3 key={index} className="display font-bold text-text">{cleanLines[0].replace(/:$/, "")}</h3>;
-    }
-
-    return (
-      <p key={index}>
-        {cleanLines.map((line, lineIndex) => (
-          <span key={lineIndex}>
-            {formatAdviceLine(line)}
-            {lineIndex < cleanLines.length - 1 && <br />}
-          </span>
-        ))}
-      </p>
-    );
-  });
-}
-
 export default function PathPage() {
   const router = useRouter();
   const pathRes = useApi<PathData>("/api/v1/learning-path");
@@ -88,9 +38,6 @@ export default function PathPage() {
   const [regenerating, setRegenerating] = useState(false);
   const [badge, setBadge] = useState<EarnedBadge[]>([]);
   const [generating, setGenerating] = useState(false);
-  const [coaching, setCoaching] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatDraft, setChatDraft] = useState("");
   const autoBuildStarted = useRef(false);
 
   const data = pathRes.data;
@@ -154,24 +101,6 @@ export default function PathPage() {
     else toast.err(r.message);
   };
 
-  const sendMessage = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const message = chatDraft.trim();
-    if (!message || coaching) return;
-
-    const history = chatMessages.slice(-10);
-    setChatMessages((current) => [...current, { role: "user", text: message }]);
-    setChatDraft("");
-    setCoaching(true);
-    const r = await api.post<{ reply: string }>("/api/v1/learning-path/coach", {
-      message,
-      history,
-    });
-    setCoaching(false);
-    if (r.success) setChatMessages((current) => [...current, { role: "assistant", text: r.data.reply }]);
-    else toast.err(r.message);
-  };
-
   const progress = items.length ? Math.round((done / items.length) * 100) : 0;
   const practiceQuestions = data.questions ?? [];
   const assistantAvailable = subscriptionRes.data?.assistantAvailable === true;
@@ -189,10 +118,10 @@ export default function PathPage() {
         }
       />
 
-      <section className="card p-5 md:p-6" aria-label="Gemini study assistant">
+      <section className="card p-5 md:p-6" aria-label="Pico AI study assistant">
         <div className="flex items-center gap-2">
           <Sparkles size={17} className="text-primary" />
-          <h2 className="display font-bold">Gemini study assistant</h2>
+          <h2 className="display font-bold">Pico AI study assistant</h2>
         </div>
         {subscriptionRes.error ? (
           <div className="mt-3" role="alert">
@@ -201,42 +130,14 @@ export default function PathPage() {
           </div>
         ) : !assistantAvailable ? (
           <div className="mt-3 rounded-xl bg-raised/60 p-4">
-            <p className="text-sm text-muted">The Gemini study assistant is available to active Pro and Team subscribers.</p>
+            <p className="text-sm text-muted">Pico’s Gemini-powered study chat is available to active Pro and Team subscribers.</p>
             <Link href="/billing" className="btn btn-primary mt-3">View plans</Link>
           </div>
         ) : (
           <>
-            <p className="text-sm text-muted mt-1">Ask about your lessons, concepts, or learning path. Gemini uses your course content and does not create quiz questions.</p>
-            <div className="mt-4 max-h-[420px] min-h-24 overflow-y-auto space-y-3" aria-live="polite">
-              {chatMessages.length === 0 && (
-                <div className="rounded-xl bg-raised/60 p-4 text-sm text-muted">
-                  Hi! I can help explain lessons and guide you through your path. What would you like to learn about?
-                </div>
-              )}
-              {chatMessages.map((message, index) => (
-                <div key={`${index}-${message.role}`} className={`rounded-xl p-4 text-sm ${
-                  message.role === "user" ? "ml-8 bg-primary/10 text-text" : "mr-8 bg-raised/60 text-muted"
-                }`}>
-                  {renderAdvice(message.text)}
-                </div>
-              ))}
-              {coaching && <p className="text-sm text-muted animate-pulse">Gemini is thinking…</p>}
-            </div>
-            <form onSubmit={sendMessage} className="mt-4 flex items-end gap-2">
-              <textarea
-                className="input min-h-11 max-h-36 resize-y"
-                rows={1}
-                maxLength={1200}
-                value={chatDraft}
-                onChange={(event) => setChatDraft(event.target.value)}
-                placeholder="Ask a question about your course…"
-                aria-label="Message Gemini"
-              />
-              <button className="btn btn-primary shrink-0" type="submit" disabled={coaching || !chatDraft.trim()}>
-                <Send size={15} /> {coaching ? "Sending…" : "Send"}
-              </button>
-            </form>
-            <p className="text-xs text-muted mt-2">Up to 20 messages per hour. Don’t include personal or sensitive information.</p>
+            <p className="text-sm text-muted mt-1 mb-4">Ask Pico about your lessons and learning path. Pico uses Gemini with your course content and does not create quiz questions.</p>
+            <PicoWidget />
+            <p className="text-xs text-muted mt-3">Up to 20 messages per hour. Don’t include personal or sensitive information.</p>
           </>
         )}
       </section>
